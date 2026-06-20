@@ -1,183 +1,195 @@
 import os
-from flask import Flask, request, jsonify
-import yfinance as tf
-import mplfinance as mpf
-import requests
 import io
+import base64
+import requests
+from flask import Flask, request, jsonify
+import yfinance as yf
+import mplfinance as mpf
+import matplotlib
+matplotlib.use('Agg')  # 確保在雲端伺服器（無顯示器環境）下畫圖不會崩潰
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
-
-IMGBB_API_KEY = os.environ.get('IMGBB_API_KEY', '你的預設KEY')
-
-def get_live_price(full_stock_id):
-    """取得即時股價與漲跌幅"""
-    try:
-        ticker = tf.Ticker(full_stock_id)
-        info = ticker.info
-        # 嘗試取得即時價格，若無則取前一次收盤
-        price = info.get('regularMarketPrice') or info.get('currentPrice') or 0.0
-        prev_close = info.get('regularMarketPreviousClose') or price
-        
-        name = info.get('shortName') or full_stock_id.split('.')[0]
-        change = price - prev_close
-        change_percent = (change / prev_close) * 100 if prev_close else 0
-        
-        # 決定顏色與符號
-        if change > 0:
-            status_text = f"▲ +{change:.2f} (+{change_percent:.2f}%)"
-            color = "#FF0000" # 紅漲
-        elif change < 0:
-            status_text = f"▼ {change:.2f} ({change_percent:.2f}%)"
-            color = "#00CC00" # 綠跌
-        else:
-            status_text = f" 0.00 (0.00%)"
-            color = "#888888"
-            
-        return name, f"{price:.2f}", status_text, color
-    except:
-        return full_stock_id.split('.')[0], "0.0", "暫無資料", "#888888"
 
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
     try:
+        # 1. 接收 Make.com 傳來的參數
         req_data = request.get_json() or {}
-        
-        # 判斷是文字輸入，還是點擊按鈕的 Postback 密碼
-        # LINE Postback 會傳入 data 欄位，例如 "action=kline&time=5m&id=2313"
-        raw_data = req_data.get('data', '')
-        stock_id = req_data.get('stock_id', '2330') # 預設值
-        time_frame = '1d' # 預設日線
-        
-        # 解析按鈕傳過來的參數
-        if raw_data:
-            params = dict(x.split('=') for x in raw_data.split('&') if '=' in x)
-            if 'id' in params: stock_id = params['id']
-            if 'time' in params: time_frame = params['time']
+        stock_id = req_data.get('stock_id', '').strip()
+        action_data = req_data.get('data', '').strip()
 
-        # 確保代號格式正確
-        stock_id = str(stock_id).strip().upper()
-        if not stock_id.endswith('.TW') and not stock_id.endswith('.TWO'):
-            full_stock_id = f"{stock_id}.TW"
+        if not stock_id:
+            return jsonify({"status": "error", "message": "Missing stock_id"}), 200
+
+        # 2. 判斷使用者是要看什麼時段的 K 線 (預設為日線 1d)
+        # yfinance 參數對應：period (資料範圍), interval (K線頻率)
+        if action_data == '1m':
+            period, interval, title_text = '1d', '1m', '1分鐘分K'
+        elif action_data == '5m':
+            period, interval, title_text = '1d', '5m', '5分鐘分K'
+        elif action_data == 'weekly':
+            period, interval, title_text = '1y', '1wk', '週K線'
         else:
-            full_stock_id = stock_id
-            stock_id = stock_id.split('.')[0]
+            period, interval, title_text = '6mo', '1d', '日K線'
 
-        # 根據 Yahoo Finance API 規範嚴格設定 period 與 interval
-        # 分K線圖不能抓太長的時間，否則 Yahoo 會拒絕回傳資料
-        period_map = {
-            '1m': '5d',    # 1分K：只抓最近 5 天（法規上限 7 天）
-            '5m': '7d',    # 5分K：只抓最近 7 天（法規上限 60 天）
-            '15m': '14d',  # 15分K：只抓最近 14 天
-            '30m': '30d',  # 30分K：只抓最近 30 天
-            '60m': '30d',  # 60分K：只抓最近 30 天
-            '1d': '3mo',   # 日K：抓 3 個月
-            '1w': '1y',    # 週K：抓 1 年
-            '1M': '2y'     # 月K：抓 2 年
-        }
-        
-        interval_map = {
-            '1m': '1m', 
-            '5m': '5m', 
-            '15m': '15m', 
-            '30m': '30m', 
-            '60m': '60m', 
-            '1d': '1d', 
-            '1w': '1wk', 
-            '1M': '1mo'
-        }
-    
-        
-        period = period_map.get(time_frame, '3mo')
-        interval = interval_map.get(time_frame, '1d')
+        # 3. 透過 yfinance 抓取股票資料
+        # 台灣股票代號需補上 .TW (例如 2313.TW)，防呆處理
+        yf_stock_id = stock_id if stock_id.endswith(('.TW', '.TWO')) else f"{stock_id}.TW"
+        ticker = yf.Ticker(yf_stock_id)
+        df = ticker.history(period=period, interval=interval)
 
-        # 1. 抓取股票數據
-        df = tf.download(full_stock_id, period=period, interval=interval)
-        
         if df.empty:
-            return jsonify({"status": "error", "message": "找不到此股票數據"})
+            # 如果加上 .TW 找不到，嘗試換成 .TWO (上櫃)
+            yf_stock_id = f"{stock_id}.TWO"
+            ticker = yf.Ticker(yf_stock_id)
+            df = ticker.history(period=period, interval=interval)
+            
+        if df.empty:
+            return jsonify({"status": "error", "message": f"找不到代碼 {stock_id} 的股票資料"}), 200
 
-        # 2. 繪製 K 線圖
-        buf = io.BytesIO()
+        # 4. 抓取即時市價與漲跌資訊
+        info = ticker.info
+        current_price = info.get('regularMarketPrice') or df['Close'].iloc[-1]
+        prev_close = info.get('regularMarketPreviousClose') or df['Open'].iloc[0]
+        
+        # 處理即時價格歷史資料可能遺失的極端情況
+        if current_price is None:
+            current_price = 0.0
+        if prev_close is None or prev_close == 0:
+            prev_close = current_price if current_price != 0 else 1.0
+
+        change = current_price - prev_close
+        change_percent = (change / prev_close) * 100
+        
+        # 判斷漲跌顏色 (台灣股市：漲紅跌綠)
+        color_theme = "#FF0000" if change >= 0 else "#00B000"
+        change_sign = "+" if change >= 0 else ""
+        price_string = f"{current_price:,.2f}"
+        change_string = f"{change_sign}{change:,.2f} ({change_sign}{change_percent:.2f}%)"
+
+        # 取得股票名稱
+        stock_name = info.get('longName') or info.get('shortName') or stock_id
+
+        # 5. 繪製 K 線圖 (徹底移除引發崩潰的 format 參數)
+        # 設定 mplfinance 的台灣慣用顏色 (漲紅跌綠)
         mc = mpf.make_marketcolors(up='r', down='g', inherit=True)
-        s  = mpf.make_mpf_style(base_mpf_style='charles', marketcolors=mc, gridstyle='--')
-        mpf.plot(df, type='candle', style=s, volume=True, savefig=buf, format='png', dimensions=(800, 600))
+        s  = mpf.make_mpf_style(base_style='charles', marketcolors=mc)
+        
+        fig, axes = mpf.plot(
+            df, type='candle', style=s, volume=True,
+            returnfig=True, figsize=(8, 5)
+        )
+        
+        # 調整標題與排版
+        axes[0].set_title(f"{stock_name} ({stock_id}) - {title_text}", fontsize=14, fontweight='bold')
+        
+        # 將圖片二進位化
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
         buf.seek(0)
+        plt.close(fig)  # 釋放記憶體避免伺服器肥大
 
-        # 3. 上傳圖片到 ImgBB
-        files = {'image': ('chart.png', buf, 'image/png')}
-        payload = {'key': IMGBB_API_KEY}
-        img_res = requests.post('https://api.imgbb.com/1/upload', data=payload, files=files)
-        image_url = img_res.json()['data']['url']
+        # 6. 上傳圖片到 ImgBB 取得圖片網址
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        img_api_key = os.environ.get("IMGBB_API_KEY")
+        
+        if not img_api_key:
+            return jsonify({"status": "error", "message": "環境變數缺少 IMGBB_API_KEY"}), 200
 
-        # 4. 撈取即時股價資訊填入卡片
-        stock_name, price_now, status_text, text_color = get_live_price(full_stock_id)
+        img_resp = requests.post(
+            "https://api.imgbb.com/1/upload",
+            data={"key": img_api_key, "image": img_base64}
+        )
+        
+        if img_resp.status_code != 200 or 'data' not in img_resp.json():
+            return jsonify({"status": "error", "message": "ImgBB 圖片上傳失敗"}), 200
+            
+        final_image_url = img_resp.json()['data']['url']
 
-        # 5. 動態動手組裝 Flex Message JSON 結構
-        # 幫當前選中的時間按鈕加上顏色控制 (style="secondary" 為選中，"link" 為沒選中)
-        def get_btn_style(t): return "secondary" if time_frame == t else "link"
-
+        # 7. 組裝 LINE 專用的四排旗艦版 Flex Message JSON 設計圖
         flex_contents = {
-          "type": "bubble",
-          "size": "mega",
-          "header": {
-            "type": "box", "layout": "vertical",
-            "contents": [
-              {
-                "type": "box", "layout": "horizontal",
+            "type": "bubble",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
                 "contents": [
-                  {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "xl", "flex": 1},
-                  {"type": "text", "text": price_now, "weight": "bold", "size": "xl", "color": text_color, "align": "end"},
-                  {"type": "text", "text": status_text, "size": "sm", "color": text_color, "align": "end", "gravity": "bottom"}
+                    # 第一排：股價與漲跌資訊
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"{stock_name} ({stock_id})",
+                                "weight": "bold",
+                                "size": "md",
+                                "flex": 1,
+                                "gravity": "center"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "contents": [
+                                    {"type": "text", "text": price_string, "weight": "bold", "size": "xl", "align": "right", "color": color_theme},
+                                    {"type": "text", "text": change_string, "size": "xs", "align": "right", "color": color_theme}
+                                ],
+                                "flex": 1
+                            }
+                        ]
+                    },
+                    {"type": "separator", "margin": "md"},
+                    # 第二排：分K切換按鈕
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "margin": "md",
+                        "spacing": "sm",
+                        "contents": [
+                            {"type": "button", "action": {"type": "postback", "label": "1分K", "data": "1m", "displayText": f"查詢 {stock_id} 1分K"}, "style": "secondary", "height": "sm"},
+                            {"type": "button", "action": {"type": "postback", "label": "5分K", "data": "5m", "displayText": f"查詢 {stock_id} 5分K"}, "style": "secondary", "height": "sm"},
+                            {"type": "button", "action": {"type": "postback", "label": "日K", "data": "1d", "displayText": f"查詢 {stock_id} 日K"}, "style": "primary", "height": "sm"},
+                            {"type": "button", "action": {"type": "postback", "label": "週K", "data": "weekly", "displayText": f"查詢 {stock_id} 週K"}, "style": "secondary", "height": "sm"}
+                        ]
+                    },
+                    # 第三排：K線圖主體
+                    {
+                        "type": "image",
+                        "url": final_image_url,
+                        "size": "full",
+                        "aspectMode": "fit",
+                        "aspectRatio": "4:3",
+                        "margin": "md"
+                    },
+                    {"type": "separator", "margin": "md"},
+                    # 第四排：延伸功能按鈕
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "margin": "md",
+                        "spacing": "sm",
+                        "contents": [
+                            {"type": "button", "action": {"type": "message", "label": "即時報價", "text": f"報價 {stock_id}"}, "style": "link", "height": "sm"},
+                            {"type": "button", "action": {"type": "message", "label": "三大法人", "text": f"法人 {stock_id}"}, "style": "link", "height": "sm"},
+                            {"type": "button", "action": {"type": "message", "label": "個股新聞", "text": f"新聞 {stock_id}"}, "style": "link", "height": "sm"}
+                        ]
+                    }
                 ]
-              }
-            ]
-          },
-          "body": {
-            "type": "box", "layout": "vertical", "paddingAll": "sm",
-            "contents": [
-              {
-                "type": "box", "layout": "horizontal", "spacing": "xs",
-                "contents": [
-                  {"type": "button", "action": {"type": "postback", "label": "1分", "data": f"action=kline&time=1m&id={stock_id}"}, "style": get_btn_style("1m"), "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "5分", "data": f"action=kline&time=5m&id={stock_id}"}, "style": get_btn_style("5m"), "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "15分", "data": f"action=kline&time=15m&id={stock_id}"}, "style": get_btn_style("15m"), "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "日", "data": f"action=kline&time=1d&id={stock_id}"}, "style": get_btn_style("1d"), "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "週", "data": f"action=kline&time=1w&id={stock_id}"}, "style": get_btn_style("1w"), "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "月", "data": f"action=kline&time=1M&id={stock_id}"}, "style": get_btn_style("1M"), "height": "sm"}
-                ]
-              },
-              {
-                "type": "image", "url": image_url, "size": "full", "aspectRatio": "4:3", "aspectMode": "cover", "margin": "md"
-              }
-            ]
-          },
-          "footer": {
-            "type": "box", "layout": "vertical",
-            "contents": [
-              {
-                "type": "box", "layout": "horizontal", "spacing": "xs",
-                "contents": [
-                  {"type": "button", "action": {"type": "postback", "label": "即時", "data": f"action=tab&tab=realtime&id={stock_id}"}, "style": "link", "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "K線", "data": f"action=tab&tab=kline&id={stock_id}"}, "style": "secondary", "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "法人", "data": f"action=tab&tab=legal&id={stock_id}"}, "style": "link", "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "資訊", "data": f"action=tab&tab=info&id={stock_id}"}, "style": "link", "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "持股", "data": f"action=tab&tab=hold&id={stock_id}"}, "style": "link", "height": "sm"},
-                  {"type": "button", "action": {"type": "postback", "label": "融資券", "data": f"action=tab&tab=margin&id={stock_id}"}, "style": "link", "height": "sm"}
-                ]
-              }
-            ]
-          }
+            }
         }
 
-        # 把整串精美的卡片結構裝在 "flex_contents" 欄位回傳給 Make.com
+        # 8. 成功回傳大禮包給 Make.com
         return jsonify({
             "status": "success",
-            "image_url": image_url,
+            "image_url": final_image_url,
             "flex_contents": flex_contents
-        })
+        }), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        # 萬一程式內部有其他未預期錯誤，捕捉並回傳錯誤訊息，防止 Make.com 拿到乾白畫面
+        return jsonify({"status": "error", "message": f"Server Error: {str(e)}"}), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # Render 會自動指定 PORT 環境變數
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
