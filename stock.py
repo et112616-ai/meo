@@ -74,7 +74,7 @@ def get_chart():
         # 5. 繪製 K 線圖 (徹底移除引發崩潰的 format 參數)
         # 設定 mplfinance 的台灣慣用顏色 (漲紅跌綠)
         mc = mpf.make_marketcolors(up='r', down='g', inherit=True)
-        s  = mpf.make_mpf_style(base_style='charles', marketcolors=mc)
+s  = mpf.make_mpf_style(style='charles', marketcolors=mc)
         
         fig, axes = mpf.plot(
             df, type='candle', style=s, volume=True,
