@@ -1,100 +1,110 @@
-import yfinance as yf
-import mplfinance as mpf
 import os
-import requests
-import base64
 from flask import Flask, request, jsonify
+import yfinance as tf
+import mplfinance as mpf
+import requests
+import io
 
 app = Flask(__name__)
 
-# ⚠️ 請把下方引號內換成你剛剛在 ImgBB 申請到的真實 API Key
-IMGBB_API_KEY = "a01f9b3381ff4de813c23892ad038842"
+IMGBB_API_KEY = os.environ.get('IMGBB_API_KEY', '你的預設KEY')
+
+def get_live_price(full_stock_id):
+    """取得即時股價與漲跌幅"""
+    try:
+        ticker = tf.Ticker(full_stock_id)
+        info = ticker.info
+        # 嘗試取得即時價格，若無則取前一次收盤
+        price = info.get('regularMarketPrice') or info.get('currentPrice') or 0.0
+        prev_close = info.get('regularMarketPreviousClose') or price
+        
+        name = info.get('shortName') or full_stock_id.split('.')[0]
+        change = price - prev_close
+        change_percent = (change / prev_close) * 100 if prev_close else 0
+        
+        # 決定顏色與符號
+        if change > 0:
+            status_text = f"▲ +{change:.2f} (+{change_percent:.2f}%)"
+            color = "#FF0000" # 紅漲
+        elif change < 0:
+            status_text = f"▼ {change:.2f} ({change_percent:.2f}%)"
+            color = "#00CC00" # 綠跌
+        else:
+            status_text = f" 0.00 (0.00%)"
+            color = "#888888"
+            
+        return name, f"{price:.2f}", status_text, color
+    except:
+        return full_stock_id.split('.')[0], "0.0", "暫無資料", "#888888"
 
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
     try:
-        # --- 💥 超級防呆強壯版接收邏輯 💥 ---
-        stock_id = "2330" # 預設值
+        req_data = request.get_json() or {}
         
-        # 嘗試從各種可能的地方撈資料
-        if request.is_json:
-            req_data = request.get_json()
-            # 確保 req_data 是一個字典，才使用 .get()
-            if isinstance(req_data, dict):
-                stock_id = req_data.get('stock_id', '2330')
-        else:
-            # 如果 Make.com 沒有用標準 JSON 傳，嘗試從表單或文字撈
-            req_data = request.form or request.data
-            if isinstance(req_data, dict):
-                stock_id = req_data.get('stock_id', '2330')
-            elif request.data:
-                import json
-                try:
-                    raw_json = json.loads(request.data.decode('utf-8'))
-                    stock_id = raw_json.get('stock_id', '2330')
-                except:
-                    # 如果真的解不開，直接把收到的東西當作代號（拿來防呆）
-                    stock_id = request.data.decode('utf-8').strip()
+        # 判斷是文字輸入，還是點擊按鈕的 Postback 密碼
+        # LINE Postback 會傳入 data 欄位，例如 "action=kline&time=5m&id=2313"
+        raw_data = req_data.get('data', '')
+        stock_id = req_data.get('stock_id', '2330') # 預設值
+        time_frame = '1d' # 預設日線
+        
+        # 解析按鈕傳過來的參數
+        if raw_data:
+            params = dict(x.split('=') for x in raw_data.split('&') if '=' in x)
+            if 'id' in params: stock_id = params['id']
+            if 'time' in params: time_frame = params['time']
 
-        # 確保 stock_id 絕對是字串，且去掉雜質
-        stock_id = str(stock_id).replace('"', '').replace("'", "").strip()
-        # ------------------------------------
-
-        # 自動修正台股尾巴
+        # 確保代號格式正確
+        stock_id = str(stock_id).strip().upper()
         if not stock_id.endswith('.TW') and not stock_id.endswith('.TWO'):
             full_stock_id = f"{stock_id}.TW"
         else:
             full_stock_id = stock_id
+            stock_id = stock_id.split('.')[0]
 
-        print(f"📡 收到請求！正式抓取 {full_stock_id} 歷史數據...")
-        # 抓取 3 個月歷史數據
-        data = yf.download(full_stock_id, period="3mo")
+        # 根據選取的線圖時間切換 yfinance 參數
+        # (注意：Yahoo Finance 免費版不一定支援完美的台股分K，這裡日/週/月最穩，分K用近期數據模擬)
+        period_map = {'1m': '1d', '5m': '1d', '15m': '1d', '30m': '5d', '60m': '5d', '1d': '3mo', '1w': '1y', '1M': '2y'}
+        interval_map = {'1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '60m': '60m', '1d': '1d', '1w': '1wk', '1M': '1mo'}
+        
+        period = period_map.get(time_frame, '3mo')
+        interval = interval_map.get(time_frame, '1d')
 
-        if data.empty:
-            return jsonify({"status": "error", "message": "找不到這檔股票"}), 400
+        # 1. 抓取股票數據
+        df = tf.download(full_stock_id, period=period, interval=interval)
+        
+        if df.empty:
+            return jsonify({"status": "error", "message": "找不到此股票數據"})
 
-        data.columns = data.columns.get_level_values(0)
-        
-        # 定義圖片儲存路徑
-        output_image = "my_stock_chart.png"
-        
-        # 繪製 K 線圖
-        mpf.plot(data, type='candle', mav=(5, 20), volume=True, style='charles', 
-                 title=f"\nStock {full_stock_id}", savefig=output_image)
-        
-        print("🎉 成功產生 K 線圖！開始上傳至雲端圖床...")
+        # 2. 繪製 K 線圖
+        buf = io.BytesIO()
+        mc = mpf.make_marketcolors(up='r', down='g', inherit=True)
+        s  = mpf.make_mpf_style(base_mpf_style='charles', marketcolors=mc, gridstyle='--')
+        mpf.plot(df, type='candle', style=s, volume=True, savefig=buf, format='png', dimensions=(800, 600))
+        buf.seek(0)
 
-        # --- 自動上傳到 ImgBB ---
-        with open(output_image, "rb") as file:
-            img_base64 = base64.b64encode(file.read())
-            
-        img_bb_url = "https://api.imgbb.com/1/upload"
-        payload = {
-            "key": IMGBB_API_KEY,
-            "image": img_base64,
-            "expiration": 600 # 💥 設定這張圖片在雲端 10 分鐘後自動刪除，保護隱私不佔空間
-        }
-        
-        response = requests.post(img_bb_url, data=payload)
-        res_json = response.json()
-        
-        if response.status_code == 200 and res_json.get("success"):
-            # 取得上傳成功後的真實圖片網址！
-            uploaded_image_url = res_json["data"]["url"]
-            print(f"🚀 圖片成功上傳雲端！網址為: {uploaded_image_url}")
-            
-            # 💥 把網址當作結果回傳給 Make.com
-            return jsonify({
-                "status": "success",
-                "image_url": uploaded_image_url
-            })
-        else:
-            return jsonify({"status": "error", "message": "圖床上傳失敗"}), 500
-            
-    except Exception as e:
-        print(f"❌ 發生錯誤: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        # 3. 上傳圖片到 ImgBB
+        files = {'image': ('chart.png', buf, 'image/png')}
+        payload = {'key': IMGBB_API_KEY}
+        img_res = requests.post('https://api.imgbb.com/1/upload', data=payload, files=files)
+        image_url = img_res.json()['data']['url']
 
-if __name__ == '__main__':
-    # 徹底簡化，直接指定 port=5000 並且開啟 debug 模式
-    app.run(host='0.0.0.0', port=5000, debug=True)
+        # 4. 撈取即時股價資訊填入卡片
+        stock_name, price_now, status_text, text_color = get_live_price(full_stock_id)
+
+        # 5. 動態動手組裝 Flex Message JSON 結構
+        # 幫當前選中的時間按鈕加上顏色控制 (style="secondary" 為選中，"link" 為沒選中)
+        def get_btn_style(t): return "secondary" if time_frame == t else "link"
+
+        flex_contents = {
+          "type": "bubble",
+          "size": "mega",
+          "header": {
+            "type": "box", "layout": "vertical",
+            "contents": [
+              {
+                "type": "box", "layout": "horizontal",
+                "contents": [
+                  {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "xl", "flex": 1},
+                  {"type": "text", "text": price_now, "weight": "bold", "size": "xl", "color": text_color, "align": "end"},
+                  {"type": "text", "text": status_text, "size": "sm", "color": text_
