@@ -71,25 +71,27 @@ def get_chart():
         # 取得股票名稱
         stock_name = info.get('longName') or info.get('shortName') or stock_id
 
-        # 5. 繪製 K 線圖 (徹底移除引發崩潰的 format 參數)
+        # 5. 繪製 K 線圖 (徹底修復 base_style 語法錯誤)
         # 設定 mplfinance 的台灣慣用顏色 (漲紅跌綠)
         mc = mpf.make_marketcolors(up='r', down='g', inherit=True)
-s  = mpf.make_mpf_style(style='charles', marketcolors=mc)
+        s  = mpf.make_mpf_style(style='charles', marketcolors=mc)
         
+        # 建立記憶體圖表緩衝區
+        buf = io.BytesIO()
+        
+        # 呼叫畫圖邏輯
         fig, axes = mpf.plot(
             df, type='candle', style=s, volume=True,
             returnfig=True, figsize=(8, 5)
         )
         
-        # 調整標題與排版
+        # 調整標題
         axes[0].set_title(f"{stock_name} ({stock_id}) - {title_text}", fontsize=14, fontweight='bold')
         
-        # 將圖片二進位化
-        buf = io.BytesIO()
+        # 儲存圖片到記憶體中
         plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
         buf.seek(0)
         plt.close(fig)  # 釋放記憶體避免伺服器肥大
-
         # 6. 上傳圖片到 ImgBB 取得圖片網址
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
         img_api_key = os.environ.get("IMGBB_API_KEY")
