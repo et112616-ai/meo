@@ -2,3 +2,4 @@ flask
 yfinance
 mplfinance
 requests
+gunicorn
