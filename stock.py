@@ -62,10 +62,30 @@ def get_chart():
             full_stock_id = stock_id
             stock_id = stock_id.split('.')[0]
 
-        # 根據選取的線圖時間切換 yfinance 參數
-        # (注意：Yahoo Finance 免費版不一定支援完美的台股分K，這裡日/週/月最穩，分K用近期數據模擬)
-        period_map = {'1m': '1d', '5m': '1d', '15m': '1d', '30m': '5d', '60m': '5d', '1d': '3mo', '1w': '1y', '1M': '2y'}
-        interval_map = {'1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '60m': '60m', '1d': '1d', '1w': '1wk', '1M': '1mo'}
+        # 根據 Yahoo Finance API 規範嚴格設定 period 與 interval
+        # 分K線圖不能抓太長的時間，否則 Yahoo 會拒絕回傳資料
+        period_map = {
+            '1m': '5d',    # 1分K：只抓最近 5 天（法規上限 7 天）
+            '5m': '7d',    # 5分K：只抓最近 7 天（法規上限 60 天）
+            '15m': '14d',  # 15分K：只抓最近 14 天
+            '30m': '30d',  # 30分K：只抓最近 30 天
+            '60m': '30d',  # 60分K：只抓最近 30 天
+            '1d': '3mo',   # 日K：抓 3 個月
+            '1w': '1y',    # 週K：抓 1 年
+            '1M': '2y'     # 月K：抓 2 年
+        }
+        
+        interval_map = {
+            '1m': '1m', 
+            '5m': '5m', 
+            '15m': '15m', 
+            '30m': '30m', 
+            '60m': '60m', 
+            '1d': '1d', 
+            '1w': '1wk', 
+            '1M': '1mo'
+        }
+    
         
         period = period_map.get(time_frame, '3mo')
         interval = interval_map.get(time_frame, '1d')
