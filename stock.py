@@ -107,4 +107,57 @@ def get_chart():
                 "contents": [
                   {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "xl", "flex": 1},
                   {"type": "text", "text": price_now, "weight": "bold", "size": "xl", "color": text_color, "align": "end"},
-                  {"type": "text", "text": status_text, "size": "sm", "color": text_
+                  {"type": "text", "text": status_text, "size": "sm", "color": text_color, "align": "end", "gravity": "bottom"}
+                ]
+              }
+            ]
+          },
+          "body": {
+            "type": "box", "layout": "vertical", "paddingAll": "sm",
+            "contents": [
+              {
+                "type": "box", "layout": "horizontal", "spacing": "xs",
+                "contents": [
+                  {"type": "button", "action": {"type": "postback", "label": "1分", "data": f"action=kline&time=1m&id={stock_id}"}, "style": get_btn_style("1m"), "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "5分", "data": f"action=kline&time=5m&id={stock_id}"}, "style": get_btn_style("5m"), "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "15分", "data": f"action=kline&time=15m&id={stock_id}"}, "style": get_btn_style("15m"), "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "日", "data": f"action=kline&time=1d&id={stock_id}"}, "style": get_btn_style("1d"), "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "週", "data": f"action=kline&time=1w&id={stock_id}"}, "style": get_btn_style("1w"), "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "月", "data": f"action=kline&time=1M&id={stock_id}"}, "style": get_btn_style("1M"), "height": "sm"}
+                ]
+              },
+              {
+                "type": "image", "url": image_url, "size": "full", "aspectRatio": "4:3", "aspectMode": "cover", "margin": "md"
+              }
+            ]
+          },
+          "footer": {
+            "type": "box", "layout": "vertical",
+            "contents": [
+              {
+                "type": "box", "layout": "horizontal", "spacing": "xs",
+                "contents": [
+                  {"type": "button", "action": {"type": "postback", "label": "即時", "data": f"action=tab&tab=realtime&id={stock_id}"}, "style": "link", "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "K線", "data": f"action=tab&tab=kline&id={stock_id}"}, "style": "secondary", "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "法人", "data": f"action=tab&tab=legal&id={stock_id}"}, "style": "link", "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "資訊", "data": f"action=tab&tab=info&id={stock_id}"}, "style": "link", "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "持股", "data": f"action=tab&tab=hold&id={stock_id}"}, "style": "link", "height": "sm"},
+                  {"type": "button", "action": {"type": "postback", "label": "融資券", "data": f"action=tab&tab=margin&id={stock_id}"}, "style": "link", "height": "sm"}
+                ]
+              }
+            ]
+          }
+        }
+
+        # 把整串精美的卡片結構裝在 "flex_contents" 欄位回傳給 Make.com
+        return jsonify({
+            "status": "success",
+            "image_url": image_url,
+            "flex_contents": flex_contents
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
