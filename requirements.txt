@@ -1,0 +1,4 @@
+flask
+yfinance
+mplfinance
+requests
