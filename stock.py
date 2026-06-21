@@ -88,6 +88,14 @@ def get_chart():
         plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
         buf.seek(0)
         plt.close(fig)
+
+        # --- 在這裡加入檢查代碼 ---
+        img_api_key = os.environ.get("IMGBB_API_KEY")
+        if not img_api_key:
+            print("ERROR: IMGBB_API_KEY is missing!")
+            return jsonify({"status": "error", "message": "ImgBB API Key 未設定"}), 200
+        print(f"DEBUG: API KEY status: {len(img_api_key)} characters loaded.")
+        # ------------------------
         
         # 6. 上傳圖片到 ImgBB 取得圖片網址
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
