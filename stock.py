@@ -112,8 +112,10 @@ def get_chart():
         if img_resp.status_code != 200 or 'data' not in img_resp.json():
             return jsonify({"status": "error", "message": "ImgBB 圖片上傳失敗"}), 200
             
-        final_image_url = img_resp.json()['data']['url']
-
+        # --- 關鍵修改：改拿 display_url 確保是直接圖片連結 ---
+        res_data = img_resp.json()['data']
+        final_image_url = res_data.get('display_url', res_data.get('url'))
+        
       # 7. 組裝 LINE Flex Message 內容 (K線圖絕對通車、終極防護版)
         # 我們將圖片放在hero區，文字放在body區，移除所有複雜按鈕，只放文字按鈕，確保JSON乾淨。
         
