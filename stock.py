@@ -95,10 +95,15 @@ def get_chart():
         print(f"DEBUG: API KEY status: {len(img_api_key)} characters loaded.")
         # ------------------------
         
-        # 6. 上傳圖片到 ImgBB 取得圖片網址
-        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        img_api_key = os.environ.get("IMGBB_API_KEY")
+# 6. 上傳圖片到 ImgBB 取得圖片網址
         
+        # 💡 [終極修正核心]：不管前面發生什麼事，在讀取前一刻強制把指針撥回 0！
+        buf.seek(0) 
+        
+        # 緊接著立刻讀取並轉成 base64，不給任何程式介入的機會
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        
+        img_api_key = os.environ.get("IMGBB_API_KEY")
         if not img_api_key:
             return jsonify({"status": "error", "message": "環境變數缺少 IMGBB_API_KEY"}), 200
 
@@ -110,13 +115,10 @@ def get_chart():
         if img_resp.status_code != 200 or 'data' not in img_resp.json():
             return jsonify({"status": "error", "message": "ImgBB 圖片上傳失敗"}), 200
             
-        # --- 關鍵修改：改拿 display_url 確保是直接圖片連結 ---
         res_data = img_resp.json()['data']
         final_image_url = res_data.get('display_url', res_data.get('url'))
-
-        # --- 加上這行終極除錯 Log ---
-        print(f"=== [DEBUG] 圖片網址在這裡 ===: {final_image_url}")
-        # ---------------------------
+        
+        print(f"=== [DEBUG] 最新圖片網址 ===: {final_image_url}")
         
       # 7. 組裝 LINE Flex Message 內容 (K線圖絕對通車、終極防護版)
         # 我們將圖片放在hero區，文字放在body區，移除所有複雜按鈕，只放文字按鈕，確保JSON乾淨。
