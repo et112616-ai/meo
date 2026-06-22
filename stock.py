@@ -76,42 +76,46 @@ def get_chart():
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({'' if change >= 0 else ''}{change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000" # 台灣紅漲綠跌
 
-        # 6. 繪製 K 線圖 (改用極度穩定的 binance 風格)
+        # 6. 繪製 K 線圖 (回歸最正統的物件導向儲存法)
         buf = io.BytesIO()
         
-        # 🚨 關鍵防禦：設定為 binance 亮色風格，並強制傳入完整的 fig, axes
+        # 這裡單純繪圖，拿到 fig 物件
         fig, axes = mpf.plot(
             df, type='candle', volume=True, returnfig=True, figsize=(10, 6),
-            style='binance', 
-            savefig=dict(fname=buf, format='png', bbox_inches='tight', dpi=100) # 直接用 mplfinance 的內建安全存檔機制
+            style='yahoo' # 白底黑字，最適合手機
         )
         
+        # 設定標題
+        axes[0].set_title(f"{stock_id} - {title_text}", fontsize=14, color='black')
+        
+        # ⭕ 核心修正：由 fig 亲自行儲存到 buf，並強制加上白底
+        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor='white')
+        
+        # 🚨 在撥回指針前，先檢查到底有沒有把資料寫進記憶體
+        file_size = buf.tell()
+        print(f"=== [DEBUG] 記憶體中圖片檔案大小 ===: {file_size} bytes")
+        
         buf.seek(0) # 強制將記憶體指針撥回開頭
-        plt.close('all') # 徹底關閉所有可能殘留的畫布，釋放記憶體
+        plt.close('all') # 徹底釋放記憶體
 
-        # 6. 繪製 K 線圖
-        buf = io.BytesIO()
-        fig, axes = mpf.plot(
-            df, type='candle', volume=True, returnfig=True, figsize=(8, 5),
-            style='charles' # 使用標準查爾斯紅綠風格
-        )
-        
-        # 加上對應時間頻率的標題
-        axes[0].set_title(f"{stock_id} - {title_text}", fontsize=14)
-        
-        # 強制由 fig 執行儲存
-        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
-        buf.seek(0) # 強制將記憶體指針撥回開頭
-        plt.close(fig)
+        # 🚨 【新防空警報 3】如果寫入的大小是 0，代表 matplotlib 還是沒畫成功，直接攔截！
+        if file_size == 0:
+            print("❌ 錯誤：Matplotlib 產出的圖檔大小為 0，不上傳 ImgBB！")
+            return jsonify({
+                "status": "success",
+                "flex_contents": {
+                    "type": "bubble",
+                    "body": {
+                        "type": "box", "layout": "vertical",
+                        "contents": [{"type": "text", "text": "伺服器繪圖畫布失效，請稍後再試。", "color": "#ff0000"}]
+                    }
+                }
+            }), 200
 
         # 7. 上傳圖片到 ImgBB
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
         img_api_key = os.environ.get("IMGBB_API_KEY")
         
-        if not img_api_key:
-            print("ERROR: IMGBB_API_KEY is missing!")
-            return jsonify({"status": "error", "message": "環境變數缺少 IMGBB_API_KEY"}), 200
-
         img_resp = requests.post(
             "https://api.imgbb.com/1/upload",
             data={"key": img_api_key, "image": img_base64}
@@ -119,10 +123,8 @@ def get_chart():
         
         img_json = img_resp.json()
         
-        # 🚨 【防空警報 2】檢查 ImgBB 是否上傳成功
         if img_resp.status_code != 200 or 'data' not in img_json:
             print(f"❌ 錯誤：ImgBB 上傳失敗！回應：{img_json}")
-            # 圖表爆了改吐純文字版 Flex，避免 Make 卡死
             return jsonify({
                 "status": "success",
                 "flex_contents": {
@@ -137,10 +139,9 @@ def get_chart():
                 }
             }), 200
 
-        # 成功拿到乾淨的直接圖片網址
         final_image_url = img_json['data'].get('display_url', img_json['data'].get('url'))
         print(f"=== [DEBUG] 最新圖片網址 ===: {final_image_url}")
-
+        
         # 8. 組裝完美的 K 線圖 LINE Flex Message 內容
         flex_contents = {
             "type": "bubble",
