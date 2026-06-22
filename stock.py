@@ -1,16 +1,28 @@
 import os
 import io
-import base64
-import requests
-import pandas as pd
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import yfinance as yf
 import mplfinance as mpf
 import matplotlib
-matplotlib.use('Agg')  # 確保在雲端伺服器（無顯示器環境）下畫圖不會崩潰
+matplotlib.use('Agg')  # 確保無顯示器環境不崩潰
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
+
+# 🌟 建立一個全域字典，用來在記憶體中暫存圖片，避免寫入硬碟
+IMAGE_CACHE = {}
+
+# 1. 新增一個給 LINE 專用的抓圖路由
+@app.route('/images/<stock_id>.png', methods=['GET'])
+def serve_image(stock_id):
+    # 從記憶體中把剛剛畫好的圖片字節拿出來
+    img_bytes = IMAGE_CACHE.get(stock_id)
+    if img_bytes:
+        return send_file(io.BytesIO(img_bytes), mimetype='image/png')
+    else:
+        # 如果找不到，吐一張 1x1 的透明圖或 404
+        return "Image not found", 404
+
 
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -23,50 +35,38 @@ def get_chart():
         if not stock_id:
             return jsonify({"status": "error", "message": "Missing stock_id"}), 200
 
-        # 2. 判斷使用者是要看什麼時段的 K 線 (預設為日線)
-        # yfinance 參數對應：period (資料範圍), interval (K線頻率)
+        # 2. 判斷時間時段
         if action_data == '1m':
-            period, interval, title_text = '1d', '1m', '1分鐘分K'
+            period, interval, title_text = '1d', '1m', '1 Min K-Line'
         elif action_data == '5m':
-            period, interval, title_text = '1d', '5m', '5分鐘分K'
+            period, interval, title_text = '1d', '5m', '5 Min K-Line'
         elif action_data == 'weekly':
-            period, interval, title_text = '1y', '1wk', '週K線'
+            period, interval, title_text = '1y', '1wk', 'Weekly K-Line'
         else:
-            period, interval, title_text = '6mo', '1d', '日K線'
+            period, interval, title_text = '3mo', '1d', 'Daily K-Line'
 
-        # 3. 轉換台灣股市代號格式 (例如 2330 轉 2330.TW)
+        # 3. 抓取 yfinance 資料
         yf_code = f"{stock_id}.TW"
-        
-       # 4. 用 yfinance 抓取歷史數字資料 (優化 period 確保一定有舊資料可以畫圖)
         ticker = yf.Ticker(yf_code)
-        
-        # 為了防止盤後或非交易日抓到空資料，如果 action_data 沒有特別指定，我們把範圍擴大到 3 個月
-        if action_data not in ['1m', '5m', 'weekly']:
-            period = '3mo' 
-            
         df = ticker.history(period=period, interval=interval)
         
-        # 🚨 印出 Debug 訊息到 Render Log，讓我們看看到底抓到幾筆資料
         print(f"=== [DEBUG] 股票 {stock_id} 抓取到的資料筆數 ===: {df.shape}")
         
-        # 🚨 【防空警報 1】檢查有沒有抓到 Yahoo 資料
         if df.empty or len(df) < 2:
-            print(f"❌ 錯誤：Yahoo Finance 抓到的資料太少或為空，無法畫圖！")
             return jsonify({
                 "status": "error",
                 "flex_contents": {
                     "type": "bubble",
                     "body": {
                         "type": "box", "layout": "vertical",
-                        "contents": [{"type": "text", "text": f"股票代號 {stock_id} 目前時段無足夠交易資料可產出圖表。", "color": "#ff0000"}]
+                        "contents": [{"type": "text", "text": "No enough data available.", "color": "#ff0000"}]
                     }
                 }
             }), 200
 
-        # 嘗試取得股票名稱，若無則用代號代替
         stock_name = ticker.info.get('longName', stock_id)
 
-        # 5. 計算即時價格與漲跌資訊
+        # 4. 計算價格資訊
         latest_close = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
         change = latest_close - prev_close
@@ -74,83 +74,34 @@ def get_chart():
         
         price_string = f"{latest_close:,.2f}"
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({'' if change >= 0 else ''}{change_percent:.2f}%)"
-        color_theme = "#ff0000" if change >= 0 else "#008000" # 台灣紅漲綠跌
+        color_theme = "#ff0000" if change >= 0 else "#008000"
 
-# 6. 繪製 K 線圖 (純英文標題防護版，徹底避開 Linux 字型損毀圖片的問題)
+        # 5. 繪製 K 線圖
         buf = io.BytesIO()
-        
-        # 英文時段標籤映射
-        en_title_map = {
-            '1m': '1 Min K-Line',
-            '5m': '5 Min K-Line',
-            'weekly': 'Weekly K-Line',
-            'daily': 'Daily K-Line'
-        }
-        en_title = en_title_map.get(action_data, 'Daily K-Line')
-
-        # 這裡單純繪圖，拿到 fig 物件
         fig, axes = mpf.plot(
             df, type='candle', volume=True, returnfig=True, figsize=(10, 6),
-            style='yahoo' # 白底黑字
+            style='yahoo'
         )
+        axes[0].set_title(f"STOCK: {stock_id} ({title_text})", fontsize=14, color='black')
         
-        # 🌟 核心關鍵：標題全部改成英文！拒絕任何中文字元，防止編碼損毀圖檔
-        axes[0].set_title(f"STOCK: {stock_id} ({en_title})", fontsize=14, color='black')
-        
-        # 由 fig 執行儲存到 buf
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor='white')
         
-        file_size = buf.tell()
-        print(f"=== [DEBUG] 記憶體中圖片檔案大小 ===: {file_size} bytes")
+        # 🌟 將圖片字節存入全域快取字典中
+        IMAGE_CACHE[stock_id] = buf.getvalue()
         
-        buf.seek(0) # 強制將記憶體指針撥回開頭
-        plt.close('all') # 徹底釋放記憶體
-
-        # 🚨 【新防空警報 3】如果寫入的大小是 0，代表 matplotlib 還是沒畫成功，直接攔截！
-        if file_size == 0:
-            print("❌ 錯誤：Matplotlib 產出的圖檔大小為 0，不上傳 ImgBB！")
-            return jsonify({
-                "status": "success",
-                "flex_contents": {
-                    "type": "bubble",
-                    "body": {
-                        "type": "box", "layout": "vertical",
-                        "contents": [{"type": "text", "text": "伺服器繪圖畫布失效，請稍後再試。", "color": "#ff0000"}]
-                    }
-                }
-            }), 200
-
-       # 7. 上傳圖片到 Telegraph (徹底解決 ImgBB 被 LINE 阻擋/封鎖的世紀盲點)
-        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        file_size = len(IMAGE_CACHE[stock_id])
+        print(f"=== [DEBUG] 自建快取圖片大小 ===: {file_size} bytes")
         
-        # 準備上傳到 telegraph 的二進位檔案格式 (它接受標準的 multipart/form-data)
         buf.seek(0)
-        files = {'file': ('chart.png', buf, 'image/png')}
-        
-        try:
-            # Telegraph 不需要任何 API KEY，直接發送 POST 即可上傳
-            tg_resp = requests.post("https://telegra.ph/upload", files=files)
-            tg_json = tg_resp.json()
-            
-            print(f"=== [DEBUG] Telegraph 原始回應 ===: {tg_json}")
-            
-            # Telegraph 成功時會回傳一個 list，裡面包含一個 dict： [{'src': '/file/xxxx.png'}]
-            if isinstance(tg_json, list) and len(tg_json) > 0 and 'src' in tg_json[0]:
-                # 拼接成完整的絕對路徑網址
-                final_image_url = "https://telegra.ph" + tg_json[0]['src']
-            else:
-                print(f"❌ 錯誤：Telegraph 解析格式不符，回應為: {tg_json}")
-                final_image_url = None
-                
-        except Exception as upload_err:
-            print(f"❌ 錯誤：上傳至 Telegraph 失敗: {str(upload_err)}")
-            final_image_url = None
-        
-        print(f"=== [DEBUG] 最終萃取出的 Telegraph 圖片網址 ===: {final_image_url}")
+        plt.close('all')
 
-        # 🚨 防空機制：若沒網址，則不勉強塞 hero 圖片，避免 LINE Flex 崩潰
-        
-        # 8. 組裝完美的 K 線圖 LINE Flex Message 內容
+        # 6. 動態獲取當前 Render 服務的根網址
+        # 這樣就不管你的 app 叫什麼名字，它都會自動去抓
+        base_url = request.url_root.rstrip('/')
+        final_image_url = f"{base_url}/images/{stock_id}.png"
+        print(f"=== [DEBUG] 本地自產圖片網址 ===: {final_image_url}")
+
+        # 7. 組裝 LINE Flex Message
         flex_contents = {
             "type": "bubble",
             "body": {
@@ -165,13 +116,13 @@ def get_chart():
                     },
                     {
                         "type": "text",
-                        "text": f"{title_text} 最新報價：{str(price_string)}",
+                        "text": f"{title_text} Price: {str(price_string)}",
                         "size": "md",
                         "margin": "md"
                     },
                     {
                         "type": "text",
-                        "text": f"漲跌幅：{str(change_string)}",
+                        "text": f"Change: {str(change_string)}",
                         "size": "sm",
                         "color": color_theme,
                         "margin": "xs"
@@ -181,19 +132,18 @@ def get_chart():
             }
         }
 
-        # 動態將圖片塞入 Hero 區
-        if final_image_url:
-            image_block = {
-                "type": "image",
-                "url": str(final_image_url).strip(),
-                "size": "full",
-                "aspectMode": "cover",
-                "aspectRatio": "20:13",
-                "gravity": "center"
-            }
-            flex_contents["hero"] = image_block
+        # 塞入直連圖片區
+        image_block = {
+            "type": "image",
+            "url": str(final_image_url).strip(),
+            "size": "full",
+            "aspectMode": "cover",
+            "aspectRatio": "20:13",
+            "gravity": "center"
+        }
+        flex_contents["hero"] = image_block
 
-        # 加入功能按鈕區塊
+        # 功能按鈕
         footer_block = {
             "type": "box",
             "layout": "horizontal",
@@ -212,11 +162,9 @@ def get_chart():
             ],
             "margin": "lg"
         }
-        # 確保 body 的 contents 存在才 append
-        if "contents" in flex_contents["body"]:
-            flex_contents["body"]["contents"].append(footer_block)
+        flex_contents["body"]["contents"].append(footer_block)
 
-        # 9. 成功回傳大禮包給 Make.com
+        # 8. 回傳大禮包
         return jsonify({
             "status": "success",
             "image_url": final_image_url,
