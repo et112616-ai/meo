@@ -4,3 +4,6 @@ mplfinance
 requests
 gunicorn
 matplotlib
+pandas
+requests
+FinMind
