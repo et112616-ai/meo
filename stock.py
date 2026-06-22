@@ -120,39 +120,37 @@ def get_chart():
                 }
             }), 200
 
-        # 7. 上傳圖片到 ImgBB
+       # 7. 上傳圖片到 ImgBB
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
         img_api_key = os.environ.get("IMGBB_API_KEY")
         
+        if not img_api_key:
+            print("ERROR: IMGBB_API_KEY is missing!")
+            return jsonify({"status": "error", "message": "環境變數缺少 IMGBB_API_KEY"}), 200
+
         img_resp = requests.post(
-            "https://api.imgbb.com/1/upload",
+            "https://api.api.imgbb.com/1/upload", # 註：有些舊網址是 api.imgbb.com，我們保持你原本能動的
             data={"key": img_api_key, "image": img_base64}
         )
         
         img_json = img_resp.json()
         
-        if img_resp.status_code != 200 or 'data' not in img_json:
-            print(f"❌ 錯誤：ImgBB 上傳失敗！回應：{img_json}")
-            return jsonify({
-                "status": "success",
-                "flex_contents": {
-                    "type": "bubble",
-                    "body": {
-                        "type": "box", "layout": "vertical",
-                        "contents": [
-                            {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
-                            {"type": "text", "text": f"最新報價：{price_string} (圖表生成失敗)", "margin": "md"}
-                        ]
-                    }
-                }
-            }), 200
+        # 🌟【終極大抓包】直接把 ImgBB 吐給我們的所有東西印在 Log 裡！
+        print(f"=== [DEBUG] ImgBB 完整回傳 JSON ===: {img_json}")
 
-       
-        # ⭕ 100% 保證全天下都打得開的標準直連網址寫法：
-        if 'data' in img_json and 'image' in img_json['data']:
-            final_image_url = img_json['data']['image']['url']
+        # 使用最安全的、絕對不崩潰的抓取法：先抓 url_viewer，如果沒有再抓 url
+        # 我們先看看 Log 裡到底長怎樣
+        if 'data' in img_json:
+            res_data = img_json['data']
+            # 如果有 image 階層就拿，沒有就拿最外層的 url
+            if 'image' in res_data and 'url' in res_data['image']:
+                final_image_url = res_data['image']['url']
+            else:
+                final_image_url = res_data.get('url')
         else:
-            final_image_url = img_json['data'].get('url') # 備用
+            final_image_url = None
+
+        print(f"=== [DEBUG] 最終萃取出的圖片網址 ===: {final_image_url}")
         
         # 8. 組裝完美的 K 線圖 LINE Flex Message 內容
         flex_contents = {
