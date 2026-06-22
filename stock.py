@@ -1,8 +1,9 @@
 import os
 import io
 import requests
+import json  # 🌟 引入標準 json 庫
 import pandas as pd
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 import yfinance as yf
 import mplfinance as mpf
 import matplotlib
@@ -33,7 +34,7 @@ def serve_image(image_key):
 
 
 # -------------------------------------------------------------------------
-# 🛠️ 路由 2：【K線圖主控中心】修復 JSON 破裂地雷版
+# 🛠️ 路由 2：【K線圖主控中心】反斜線反制版
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -68,12 +69,10 @@ def get_chart():
         df = ticker.history(period=period, interval=interval)
         
         if df.empty or len(df) < 2:
-            return jsonify({
-                "status": "success",
-                "flex_contents": {
-                    "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
-                }
-            }), 200
+            flex_contents = {
+                "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
+            }
+            return jsonify({"status": "success", "flex_contents": flex_contents}), 200
 
         latest_close = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
@@ -96,9 +95,6 @@ def get_chart():
 
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
-
-        # 🌟 終極修正：將網址轉為純粹乾淨的字串，阻絕任何 JSON 變形
-        clean_img_url = str(final_image_url).strip()
 
         flex_contents = {
             "type": "bubble",
@@ -128,7 +124,7 @@ def get_chart():
                     {
                         "type": "box", "layout": "vertical",
                         "contents": [
-                            {"type": "image", "url": clean_img_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
+                            {"type": "image", "url": final_image_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
                             {
                                 "type": "box", "layout": "horizontal", "margin": "md",
                                 "contents": [
@@ -152,7 +148,11 @@ def get_chart():
                 ]
             }
         }
-        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+        
+        # 🌟 終極殺招：強制不讓 Python 逃避斜線，輸出完美無斜線轉義的 JSON
+        output_data = {"status": "success", "flex_contents": flex_contents}
+        json_output = json.dumps(output_data, ensure_ascii=False)
+        return Response(json_output, content_type='application/json; charset=utf-8'), 200
 
     except Exception as e:
         print(f"💥 K線主控系統崩潰：{str(e)}")
@@ -178,7 +178,9 @@ def get_holders():
         resp = requests.get(url, params=params).json()
         
         if resp.get("status") != 200 or not resp.get("data") or len(resp["data"]) == 0:
-            return jsonify({"status": "success", "flex_contents": {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name}({stock_id}) 的大股東籌碼資料，請稍後再試。"}]}}}), 200
+            flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name}({stock_id}) 的大股東籌碼資料，請稍後再試。"}]}}
+            output_data = {"status": "success", "flex_contents": flex_contents}
+            return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
             
         df = pd.DataFrame(resp["data"])
         df_1000 = df[df["shareholding_class"] == "1000以上"].copy()
@@ -188,7 +190,8 @@ def get_holders():
             if len(classes) > 0:
                 df_1000 = df[df["shareholding_class"] == classes[-1]].copy()
             else:
-                return jsonify({"status": "success", "flex_contents": {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ {stock_name} 的大股東資料格式不符。"}]}}}), 200
+                flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ {stock_name} 的大股東資料格式不符。"}]}}
+                return Response(json.dumps({"status": "success", "flex_contents": flex_contents}, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
         df_1000 = df_1000.sort_values("date", ascending=False)
         
@@ -263,7 +266,9 @@ def get_holders():
                 ]
             }
         }
-        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+        
+        output_data = {"status": "success", "flex_contents": flex_contents}
+        return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
     except Exception as e:
         print(f"💥 籌碼系統發生錯誤：{str(e)}")
