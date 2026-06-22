@@ -94,12 +94,13 @@ def get_chart():
         
         buf.seek(0)
         plt.close('all')
-
-        # 6. 動態獲取當前 Render 服務的根網址
-        # 這樣就不管你的 app 叫什麼名字，它都會自動去抓
-        base_url = request.url_root.rstrip('/')
+     
+        # 🌟 [終極大修正]：如果 Render 給我們的是 http，強迫把它換成 https！
+        if base_url.startswith('http://'):
+            base_url = base_url.replace('http://', 'https://', 1)
+            
         final_image_url = f"{base_url}/images/{stock_id}.png"
-        print(f"=== [DEBUG] 本地自產圖片網址 ===: {final_image_url}")
+        print(f"=== [DEBUG] 本地自產圖片網址 (強制安全加密版) ===: {final_image_url}")
 
         # 7. 組裝 LINE Flex Message
         flex_contents = {
