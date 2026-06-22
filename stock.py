@@ -84,8 +84,7 @@ def get_chart():
         )
         
         axes[0].set_title(f"{stock_name} ({stock_id})", fontsize=14)
-        
-        plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
         buf.seek(0)
         plt.close(fig)
 
