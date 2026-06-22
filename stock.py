@@ -120,44 +120,35 @@ def get_chart():
                 }
             }), 200
 
-       # 7. 上傳圖片到 ImgBB
+       # 7. 上傳圖片到 Telegraph (徹底解決 ImgBB 被 LINE 阻擋/封鎖的世紀盲點)
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        img_api_key = os.environ.get("IMGBB_API_KEY")
         
-        if not img_api_key:
-            print("ERROR: IMGBB_API_KEY is missing!")
-            return jsonify({"status": "error", "message": "環境變數缺少 IMGBB_API_KEY"}), 200
-
-        # 這裡保持你原本使用的 api.imgbb.com 網址
-        img_resp = requests.post(
-            "https://api.imgbb.com/1/upload",
-            data={"key": img_api_key, "image": img_base64}
-        )
+        # 準備上傳到 telegraph 的二進位檔案格式 (它接受標準的 multipart/form-data)
+        buf.seek(0)
+        files = {'file': ('chart.png', buf, 'image/png')}
         
-        # 🌟 安全防禦：先將回應印在 Log 中，方便我們抓妖
         try:
-            img_json = img_resp.json()
-            print(f"=== [DEBUG] ImgBB 完整回傳 JSON ===: {img_json}")
-        except Exception as json_err:
-            print(f"❌ 錯誤：解析 ImgBB 回應 JSON 失敗: {str(json_err)}")
-            img_json = {}
-        
-        # 🌟 採用 100% 絕對不崩潰的防錯邏輯來抓取網址
-        final_image_url = None
-        if isinstance(img_json, dict) and img_json.get('success') is True:
-            res_data = img_json.get('data', {})
-            # 優先嘗試幾種常見的直連欄位，抓不到就抓預設的 url
-            if 'image' in res_data and isinstance(res_data['image'], dict):
-                final_image_url = res_data['image'].get('url')
+            # Telegraph 不需要任何 API KEY，直接發送 POST 即可上傳
+            tg_resp = requests.post("https://telegra.ph/upload", files=files)
+            tg_json = tg_resp.json()
             
-            if not final_image_url:
-                final_image_url = res_data.get('url')
+            print(f"=== [DEBUG] Telegraph 原始回應 ===: {tg_json}")
+            
+            # Telegraph 成功時會回傳一個 list，裡面包含一個 dict： [{'src': '/file/xxxx.png'}]
+            if isinstance(tg_json, list) and len(tg_json) > 0 and 'src' in tg_json[0]:
+                # 拼接成完整的絕對路徑網址
+                final_image_url = "https://telegra.ph" + tg_json[0]['src']
+            else:
+                print(f"❌ 錯誤：Telegraph 解析格式不符，回應為: {tg_json}")
+                final_image_url = None
+                
+        except Exception as upload_err:
+            print(f"❌ 錯誤：上傳至 Telegraph 失敗: {str(upload_err)}")
+            final_image_url = None
         
-        print(f"=== [DEBUG] 最終萃取出的圖片網址 ===: {final_image_url}")
+        print(f"=== [DEBUG] 最終萃取出的 Telegraph 圖片網址 ===: {final_image_url}")
 
-        # 🚨 如果網址是空的，強制給一個替代的公開圖片，或者不塞 hero，絕對不讓 Flex 結構壞掉
-        if not final_image_url:
-            print("❌ 警告：未成功取得 ImgBB 網址，將生成不帶圖片的純文字 Flex 訊息")
+        # 🚨 防空機制：若沒網址，則不勉強塞 hero 圖片，避免 LINE Flex 崩潰
         
         # 8. 組裝完美的 K 線圖 LINE Flex Message 內容
         flex_contents = {
