@@ -1,51 +1,73 @@
 import os
 import io
+import requests
+import pandas as pd
 from flask import Flask, request, jsonify, send_file
 import yfinance as yf
 import mplfinance as mpf
 import matplotlib
-matplotlib.use('Agg')  # 確保無顯示器環境不崩潰
+matplotlib.use('Agg')  # 確保無顯示器 Linux 環境不崩潰
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
-# 🌟 建立一個全域字典，用來在記憶體中暫存圖片，避免寫入硬碟
+# 🌟 記憶體圖片快取（給 K 線圖直連使用）
 IMAGE_CACHE = {}
 
-# 1. 新增一個給 LINE 專用的抓圖路由
-@app.route('/images/<stock_id>.png', methods=['GET'])
-def serve_image(stock_id):
-    # 從記憶體中把剛剛畫好的圖片字節拿出來
-    img_bytes = IMAGE_CACHE.get(stock_id)
+# 🌟 台股精準中文名稱對照導航庫
+STOCK_NAME_MAP = {
+    "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
+    "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
+    "4979": "華星光", "0052": "富邦科技", "009816": "凱基台灣TOP50"
+}
+
+# -------------------------------------------------------------------------
+# 🛠️ 路由 1：圖片伺服器（給 LINE 伺服器直連抓圖，強制 https，免第三方圖床）
+# -------------------------------------------------------------------------
+@app.route('/images/<image_key>.png', methods=['GET'])
+def serve_image(image_key):
+    img_bytes = IMAGE_CACHE.get(image_key)
     if img_bytes:
         return send_file(io.BytesIO(img_bytes), mimetype='image/png')
-    else:
-        # 如果找不到，吐一張 1x1 的透明圖或 404
-        return "Image not found", 404
+    return "Image not found", 404
 
 
+# -------------------------------------------------------------------------
+# 🛠️ 路由 2：【K線圖主控中心】處理即時、K線切換、時段按鈕
+# -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
     try:
-        # 1. 接收 Make.com 傳來的參數
         req_data = request.get_json() or {}
-        stock_id = req_data.get('stock_id', '').strip()
+        raw_id = req_data.get('stock_id', '').strip()
         action_data = req_data.get('data', '').strip()
 
+        # 基礎切字邏輯：相容使用者輸入「K線 2303 daily」或單純「2303」
+        stock_id = raw_id.replace("K線", "").replace("即時", "").strip().split()[0]
+        
         if not stock_id:
             return jsonify({"status": "error", "message": "Missing stock_id"}), 200
 
-        # 2. 判斷時間時段
-        if action_data == '1m':
+        # 判斷時間頻率與標題
+        if '1m' in action_data:
             period, interval, title_text = '1d', '1m', '1 Min K-Line'
-        elif action_data == '5m':
+        elif '3m' in action_data:
+            period, interval, title_text = '1d', '3m', '3 Min K-Line'
+        elif '5m' in action_data:
             period, interval, title_text = '1d', '5m', '5 Min K-Line'
-        elif action_data == 'weekly':
+        elif '30m' in action_data:
+            period, interval, title_text = '5d', '30m', '30 Min K-Line'
+        elif 'weekly' in action_data:
             period, interval, title_text = '1y', '1wk', 'Weekly K-Line'
+        elif 'monthly' in action_data:
+            period, interval, title_text = '5y', '1mo', 'Monthly K-Line'
         else:
             period, interval, title_text = '3mo', '1d', 'Daily K-Line'
 
-        # 3. 抓取 yfinance 資料
+        # 獲取中文名稱
+        stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
+
+        # 抓取 yfinance 資料
         yf_code = f"{stock_id}.TW"
         ticker = yf.Ticker(yf_code)
         df = ticker.history(period=period, interval=interval)
@@ -54,19 +76,13 @@ def get_chart():
         
         if df.empty or len(df) < 2:
             return jsonify({
-                "status": "error",
+                "status": "success",
                 "flex_contents": {
-                    "type": "bubble",
-                    "body": {
-                        "type": "box", "layout": "vertical",
-                        "contents": [{"type": "text", "text": "No enough data available.", "color": "#ff0000"}]
-                    }
+                    "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
                 }
             }), 200
 
-        stock_name = ticker.info.get('longName', stock_id)
-
-        # 4. 計算價格資訊
+        # 計算價格資訊
         latest_close = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
         change = latest_close - prev_close
@@ -76,105 +92,195 @@ def get_chart():
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({'' if change >= 0 else ''}{change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000"
 
-        # 5. 繪製 K 線圖
+        # 畫 K 線圖（純英文標題，絕不踩中文字型地雷）
         buf = io.BytesIO()
-        fig, axes = mpf.plot(
-            df, type='candle', volume=True, returnfig=True, figsize=(10, 6),
-            style='yahoo'
-        )
+        fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
         axes[0].set_title(f"STOCK: {stock_id} ({title_text})", fontsize=14, color='black')
-        
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor='white')
         
-        # 🌟 將圖片字節存入全域快取字典中
-        IMAGE_CACHE[stock_id] = buf.getvalue()
-        
-        file_size = len(IMAGE_CACHE[stock_id])
-        print(f"=== [DEBUG] 自建快取圖片大小 ===: {file_size} bytes")
-        
+        image_key = f"chart_{stock_id}"
+        IMAGE_CACHE[image_key] = buf.getvalue()
         buf.seek(0)
         plt.close('all')
-     
-        # 6. 直接手動指定 Render 的安全加密網域 (徹底斷絕 Flask 猜測網址出錯的可能)
-        # 🌟 這裡直接寫死你專屬的網址，保證 100% 是安全加密的 https
+
+        # 手動定死你的安全加密網域，LINE 絕對放行
         base_url = "https://meo-qput.onrender.com"
-            
-        final_image_url = f"{base_url}/images/{stock_id}.png"
-        print(f"=== [DEBUG] 本地自產圖片網址 (手動絕對領域版) ===: {final_image_url}")
-        
-        # 7. 組裝 LINE Flex Message
+        final_image_url = f"{base_url}/images/{image_key}.png"
+
+        # ==================== 🛠️ 核心：全新五排佈局外殼 ====================
         flex_contents = {
             "type": "bubble",
             "body": {
-                "type": "box",
-                "layout": "vertical",
+                "type": "box", "layout": "vertical", "spacing": "md",
                 "contents": [
+                    # 🔹 第一排：中文名稱(代號) + 期貨按鈕
                     {
-                        "type": "text",
-                        "text": f"{str(stock_name)} ({str(stock_id)})",
-                        "weight": "bold",
-                        "size": "lg"
+                        "type": "box", "layout": "horizontal", "alignment": "center",
+                        "contents": [
+                            {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "xl", "flex": 3, "gravity": "center"},
+                            {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
+                        ]
                     },
+                    # 🔹 第二排：時間頻率切換按鈕區 (1分～月)
                     {
-                        "type": "text",
-                        "text": f"{title_text} Price: {str(price_string)}",
-                        "size": "md",
-                        "margin": "md"
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}},
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "日", "text": f"K線 {stock_id} daily"}},
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週", "text": f"K線 {stock_id} weekly"}},
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
+                        ]
                     },
+                    {"type": "separator"},
+                    # 🔹 第三排：K線圖內嵌區 + 報價資訊
                     {
-                        "type": "text",
-                        "text": f"Change: {str(change_string)}",
-                        "size": "sm",
-                        "color": color_theme,
-                        "margin": "xs"
+                        "type": "box", "layout": "vertical",
+                        "contents": [
+                            {"type": "image", "url": str(final_image_url).strip(), "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
+                            {
+                                "type": "box", "layout": "horizontal", "margin": "md",
+                                "contents": [
+                                    {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
+                                    {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
+                                ]
+                            }
+                        ]
                     },
-                    {"type": "separator", "margin": "lg"}
+                    {"type": "separator"},
+                    # 🔹 第四排：核心分頁選項大功能區 (即時、K線、法人、融資券、持股)
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+                        ]
+                    }
                 ]
             }
         }
-
-        # 塞入直連圖片區
-        image_block = {
-            "type": "image",
-            "url": str(final_image_url).strip(),
-            "size": "full",
-            "aspectMode": "cover",
-            "aspectRatio": "20:13",
-            "gravity": "center"
-        }
-        flex_contents["hero"] = image_block
-
-        # 功能按鈕
-        footer_block = {
-            "type": "box",
-            "layout": "horizontal",
-            "spacing": "sm",
-            "contents": [
-                {
-                    "type": "button",
-                    "style": "primary",
-                    "height": "sm",
-                    "action": {
-                        "type": "message",
-                        "label": "查看更多新聞",
-                        "text": f"新聞 {str(stock_id)}"
-                    }
-                }
-            ],
-            "margin": "lg"
-        }
-        flex_contents["body"]["contents"].append(footer_block)
-
-        # 8. 回傳大禮包
-        return jsonify({
-            "status": "success",
-            "image_url": final_image_url,
-            "flex_contents": flex_contents
-        }), 200
+        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
 
     except Exception as e:
-        print(f"💥 系統嚴重崩潰：{str(e)}")
+        print(f"💥 K線主控系統崩潰：{str(e)}")
         return jsonify({"status": "error", "message": f"Server Error: {str(e)}"}), 200
+
+
+# -------------------------------------------------------------------------
+# 🛠️ 路由 3：【千張大股東籌碼中心】完全免字型地雷、原生 LINE 結構表格版！
+# -------------------------------------------------------------------------
+@app.route('/get_holders', methods=['POST'])
+def get_holders():
+    try:
+        req_data = request.get_json() or {}
+        raw_id = req_data.get('stock_id', '').strip()
+        
+        # 切出代號
+        stock_id = raw_id.replace("持股", "").strip().split()[0]
+        stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
+
+        fm_token = os.environ.get("FINMIND_TOKEN", "")
+        
+        # 1. 抓取 FinMind 股權分散表
+        url = "https://api.finmindtrade.com/api/v4/data"
+        params = {"dataset": "TaiwanStockShareholding", "data_id": stock_id, "token": fm_token}
+        resp = requests.get(url, params=params).json()
+        
+        if resp.get("status") != 200 or not resp.get("data"):
+            return jsonify({"status": "success", "flex_contents": {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name} 的大股東籌碼資料。"}]}}}), 200
+            
+        df = pd.DataFrame(resp["data"])
+        
+        # 2. 篩選「1000張以上」大股東
+        df_1000 = df[df["shareholding_class"] == "1000以上"].copy()
+        if df_1000.empty:
+            df_1000 = df[df["shareholding_class"] == df["shareholding_class"].iloc[-1]].copy()
+
+        # 排序並取最新 4 筆（前後期對比）
+        df_1000 = df_1000.sort_values("date", ascending=False)
+        
+        # 計算變動（比率相減）
+        df_1000['diff'] = df_1000['proportions'].diff(-1)
+        df_4 = df_1000.head(4).copy()
+
+        # 3. 利用 LINE 原生的 Box 與 Text 來手工搭建 4 欄精美表格 (免字型、防損毀、可複製文字)
+        # 表頭欄位
+        table_rows = [
+            {
+                "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "xs",
+                "contents": [
+                    {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center"},
+                    {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center"},
+                    {"type": "text", "text": "增減", "weight": "bold", "size": "xs", "align": "center"},
+                    {"type": "text", "text": "人數", "weight": "bold", "size": "xs", "align": "center"}
+                ]
+            },
+            {"type": "separator"}
+        ]
+
+        # 填入最新 4 筆數據
+        for _, row in df_4.iterrows():
+            date_str = row["date"][5:].replace("-", "/") # 轉成 06/18
+            ratio_str = f"{row['proportions']}%"
+            
+            # 計算增減符號與顏色
+            diff_val = row['diff']
+            if pd.isna(diff_val):
+                diff_str, diff_color = "--", "#000000"
+            else:
+                diff_str = f"+{diff_val:.2f}%" if diff_val >= 0 else f"{diff_val:.2f}%"
+                diff_color = "#ff0000" if diff_val >= 0 else "#008000"
+                
+            count_str = f"{int(row['number_of_shareholders'])}人"
+
+            # 單橫排結構
+            row_block = {
+                "type": "box", "layout": "horizontal", "padding": "xs",
+                "contents": [
+                    {"type": "text", "text": date_str, "size": "xs", "align": "center"},
+                    {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold"},
+                    {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold"},
+                    {"type": "text", "text": count_str, "size": "xs", "align": "center"}
+                ]
+            }
+            table_rows.append(row_block)
+            table_rows.append({"type": "separator", "color": "#eeeeee"})
+
+        # 4. 組裝最終持股分頁 Flex 大禮包
+        flex_contents = {
+            "type": "bubble",
+            "body": {
+                "type": "box", "layout": "vertical", "spacing": "sm",
+                "contents": [
+                    {"type": "text", "text": f"📊 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": "條件：大股東張數大於1000張變動", "size": "xs", "color": "#888888", "margin": "xs"},
+                    {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
+                    {"type": "separator", "margin": "lg"},
+                    # 把功能按鈕導航列也塞在持股分頁最下面，方便使用者按別的功能切換回去！
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+                        ]
+                    }
+                ]
+            }
+        }
+        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+
+    except Exception as e:
+        print(f"💥 籌碼系統發生錯誤：{str(e)}")
+        return jsonify({"status": "error", "message": f"籌碼中心故障: {str(e)}"}), 200
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
