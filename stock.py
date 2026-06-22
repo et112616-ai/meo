@@ -33,7 +33,7 @@ def serve_image(image_key):
 
 
 # -------------------------------------------------------------------------
-# 🛠️ 路由 2：【K線圖主控中心】
+# 🛠️ 路由 2：【K線圖主控中心】修復 JSON 破裂地雷版
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -97,6 +97,9 @@ def get_chart():
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
+        # 🌟 終極修正：將網址轉為純粹乾淨的字串，阻絕任何 JSON 變形
+        clean_img_url = str(final_image_url).strip()
+
         flex_contents = {
             "type": "bubble",
             "body": {
@@ -125,7 +128,7 @@ def get_chart():
                     {
                         "type": "box", "layout": "vertical",
                         "contents": [
-                            {"type": "image", "url": str(final_image_url).strip(), "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
+                            {"type": "image", "url": clean_img_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
                             {
                                 "type": "box", "layout": "horizontal", "margin": "md",
                                 "contents": [
@@ -157,7 +160,7 @@ def get_chart():
 
 
 # -------------------------------------------------------------------------
-# 🛠️ 路由 3：【千張大股東籌碼中心】防禦升級不崩潰版
+# 🛠️ 路由 3：【千張大股東籌碼中心】
 # -------------------------------------------------------------------------
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
@@ -170,21 +173,16 @@ def get_holders():
 
         fm_token = os.environ.get("FINMIND_TOKEN", "")
         
-        # 1. 抓取 FinMind 股權分散表
         url = "https://api.finmindtrade.com/api/v4/data"
         params = {"dataset": "TaiwanStockShareholding", "data_id": stock_id, "token": fm_token}
         resp = requests.get(url, params=params).json()
         
-        # 🛑 防禦 A：檢查 API 回傳狀態與是否有資料
         if resp.get("status") != 200 or not resp.get("data") or len(resp["data"]) == 0:
             return jsonify({"status": "success", "flex_contents": {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name}({stock_id}) 的大股東籌碼資料，請稍後再試。"}]}}}), 200
             
         df = pd.DataFrame(resp["data"])
-        
-        # 2. 篩選「1000張以上」大股東
         df_1000 = df[df["shareholding_class"] == "1000以上"].copy()
         
-        # 🛑 防禦 B：如果找不到 "1000以上" 這個字眼，退回抓最後一種分級
         if df_1000.empty:
             classes = df["shareholding_class"].unique()
             if len(classes) > 0:
@@ -192,10 +190,8 @@ def get_holders():
             else:
                 return jsonify({"status": "success", "flex_contents": {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ {stock_name} 的大股東資料格式不符。"}]}}}), 200
 
-        # 按日期由新到舊排序
         df_1000 = df_1000.sort_values("date", ascending=False)
         
-        # 🛑 防禦 C：計算變動，若只有 1 筆就無法計算 diff
         if len(df_1000) > 1:
             df_1000['diff'] = df_1000['proportions'].diff(-1)
         else:
@@ -203,7 +199,6 @@ def get_holders():
             
         df_4 = df_1000.head(4).copy()
 
-        # 3. 建立 LINE 原生表格 rows 骨架
         table_rows = [
             {
                 "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "xs",
@@ -217,17 +212,13 @@ def get_holders():
             {"type": "separator"}
         ]
 
-        # 填入數據（加入極限安全值處理）
         for _, row in df_4.iterrows():
-            # 日期安全裁切
             raw_date = str(row.get("date", "----"))
             date_str = raw_date[5:].replace("-", "/") if len(raw_date) >= 10 else raw_date
             
-            # 比例安全讀取
             proportions_val = row.get("proportions", 0.0)
             ratio_str = f"{proportions_val:.2f}%"
             
-            # 增減安全判斷
             diff_val = row.get('diff', 0.0)
             if pd.isna(diff_val):
                 diff_str, diff_color = "--", "#000000"
@@ -235,7 +226,6 @@ def get_holders():
                 diff_str = f"+{diff_val:.2f}%" if diff_val >= 0 else f"{diff_val:.2f}%"
                 diff_color = "#ff0000" if diff_val >= 0 else "#008000"
                 
-            # 人數安全讀取
             shareholders_val = row.get("number_of_shareholders", 0)
             count_str = f"{int(shareholders_val):,}人"
 
@@ -251,7 +241,6 @@ def get_holders():
             table_rows.append(row_block)
             table_rows.append({"type": "separator", "color": "#eeeeee"})
 
-        # 4. 組裝最終持股分頁 Flex JSON
         flex_contents = {
             "type": "bubble",
             "body": {
