@@ -33,92 +33,120 @@ def get_chart():
         else:
             period, interval, title_text = '6mo', '1d', '日K線'
 
-        # 3. 透過 yfinance 抓取股票資料
-        # 台灣股票代號需補上 .TW (例如 2313.TW)，防呆處理
-        yf_stock_id = stock_id if stock_id.endswith(('.TW', '.TWO')) else f"{stock_id}.TW"
-        ticker = yf.Ticker(yf_stock_id)
-        df = ticker.history(period=period, interval=interval)
+        import yfinance as yf  # 確保是用 yfinance，而不是自己用 requests 爬網頁
+import pandas as pd
+import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import mplfinance as mpf
 
-        if df.empty:
-            # 如果加上 .TW 找不到，嘗試換成 .TWO (上櫃)
-            yf_stock_id = f"{stock_id}.TWO"
-            ticker = yf.Ticker(yf_stock_id)
-            df = ticker.history(period=period, interval=interval)
-            
-        if df.empty:
-            return jsonify({"status": "error", "message": f"找不到代碼 {stock_id} 的股票資料"}), 200
+# ... 你的 Flask 路由定義 ...
 
-        # 4. 抓取即時市價與漲跌資訊
-        info = ticker.info
-        current_price = info.get('regularMarketPrice') or df['Close'].iloc[-1]
-        prev_close = info.get('regularMarketPreviousClose') or df['Open'].iloc[0]
+    try:
+        # 1. 轉換台灣股市代號格式 (例如 2330 轉 2330.TW)
+        yf_code = f"{stock_id}.TW"
         
-        # 處理即時價格歷史資料可能遺失的極端情況
-        if current_price is None:
-            current_price = 0.0
-        if prev_close is None or prev_close == 0:
-            prev_close = current_price if current_price != 0 else 1.0
+        # 2. 用 yfinance 抓取歷史數字資料 (避開網頁互動圖表抓不到的問題)
+        ticker = yf.Ticker(yf_code)
+        df = ticker.history(period="60d", interval="1d") # 抓取近 60 天日線
+        
+        # 🚨 【防空警報 1】檢查有沒有抓到 Yahoo 資料
+        if df.empty:
+            print(f"❌ 錯誤：Yahoo Finance 找不到代號 {yf_code} 的資料！")
+            return jsonify({
+                "status": "error",
+                "flex_contents": {
+                    "type": "bubble",
+                    "body": {
+                        "type": "box", "layout": "vertical",
+                        "contents": [{"type": "text", "text": f"找不到股票代號 {stock_id}，請確認是否輸入正確。", "color": "#ff0000"}]
+                    }
+                }
+            }), 200
 
-        change = current_price - prev_close
+        stock_name = ticker.info.get('longName', stock_id) # 拿不到英文/中文全名就用代號代替
+
+        # 3. 計算即時價格 (假設 df 裡面有資料了)
+        latest_close = df['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
+        change = latest_close - prev_close
         change_percent = (change / prev_close) * 100
         
-        # 判斷漲跌顏色 (台灣股市：漲紅跌綠)
-        color_theme = "#FF0000" if change >= 0 else "#00B000"
-        change_sign = "+" if change >= 0 else ""
-        price_string = f"{current_price:,.2f}"
-        change_string = f"{change_sign}{change:,.2f} ({change_sign}{change_percent:.2f}%)"
+        price_string = f"{latest_close:,.2f}"
+        change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({'' if change >= 0 else ''}{change_percent:.2f}%)"
+        color_theme = "#ff0000" if change >= 0 else "#008000" # 台灣紅漲綠跌
 
-        # 取得股票名稱
-        stock_name = info.get('longName') or info.get('shortName') or stock_id
-
-        # 5. 繪製 K 線圖 (終極除錯：改用最純粹、無中文的 matplotlib 測試)
+        # 4. 繪製 K 線圖
         buf = io.BytesIO()
-        
-        # 建立一個最簡單的畫布，畫一條從 (0,0) 到 (1,1) 的藍色斜線
-        fig, ax = plt.subplots(figsize=(8, 5))
-        ax.plot([0, 1], [0, 1], label='Test Line')
-        ax.set_title(f"STOCK TEST - {stock_id}") # ❌ 完全不用中文
-        ax.legend()
-        
-        # 儲存
+        fig, axes = mpf.plot(
+            df, type='candle', volume=True, returnfig=True, figsize=(8, 5),
+            style='charles' # 使用標準查爾斯風格
+        )
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
         buf.seek(0)
         plt.close(fig)
 
-        # --- 保持你原本的檢查代碼與 ImgBB 上傳不變 ---
-
-        # --- 在這裡加入檢查代碼 ---
-        img_api_key = os.environ.get("IMGBB_API_KEY")
-        if not img_api_key:
-            print("ERROR: IMGBB_API_KEY is missing!")
-            return jsonify({"status": "error", "message": "ImgBB API Key 未設定"}), 200
-        print(f"DEBUG: API KEY status: {len(img_api_key)} characters loaded.")
-        # ------------------------
-        
-# 6. 上傳圖片到 ImgBB 取得圖片網址
-        
-        # 💡 [終極修正核心]：不管前面發生什麼事，在讀取前一刻強制把指針撥回 0！
-        buf.seek(0) 
-        
-        # 緊接著立刻讀取並轉成 base64，不給任何程式介入的機會
+        # 5. 上傳圖片到 ImgBB
         img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        
         img_api_key = os.environ.get("IMGBB_API_KEY")
-        if not img_api_key:
-            return jsonify({"status": "error", "message": "環境變數缺少 IMGBB_API_KEY"}), 200
-
+        
         img_resp = requests.post(
             "https://api.imgbb.com/1/upload",
             data={"key": img_api_key, "image": img_base64}
         )
         
-        if img_resp.status_code != 200 or 'data' not in img_resp.json():
-            return jsonify({"status": "error", "message": "ImgBB 圖片上傳失敗"}), 200
-            
-        res_data = img_resp.json()['data']
-        final_image_url = res_data.get('display_url', res_data.get('url'))
+        img_json = img_resp.json()
         
-        print(f"=== [DEBUG] 最新圖片網址 ===: {final_image_url}")
+        # 🚨 【防空警報 2】檢查 ImgBB 是否真的成功吐回網址
+        if img_resp.status_code != 200 or 'data' not in img_json:
+            print(f"❌ 錯誤：ImgBB 上傳失敗！回應：{img_json}")
+            # 如果圖片爆了，我們「改吐純文字版 Flex」，確保 Make 不會因為找不到欄位而死當
+            return jsonify({
+                "status": "success",
+                "flex_contents": {
+                    "type": "bubble",
+                    "body": {
+                        "type": "box", "layout": "vertical",
+                        "contents": [
+                            {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
+                            {"type": "text", "text": f"最新報價：{price_string} (圖表生成失敗)", "margin": "md"}
+                        ]
+                    }
+                }
+            }), 200
+
+        # 如果都成功，拿到乾淨網址
+        final_image_url = img_json['data'].get('display_url', img_json['data'].get('url'))
+
+        # 6. 組裝成功的完整 K 線圖 Flex Message
+        flex_contents = {
+            "type": "bubble",
+            "hero": {
+                "type": "image",
+                "url": str(final_image_url).strip(),
+                "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"
+            },
+            "body": {
+                "type": "box", "layout": "vertical",
+                "contents": [
+                    {"type": "text", "text": f"{str(stock_name)} ({str(stock_id)})", "weight": "bold", "size": "lg"},
+                    {
+                        "type": "box", "layout": "horizontal", "margin": "md",
+                        "contents": [
+                            {"type": "text", "text": f"最新價: {price_string}", "size": "sm", "weight": "bold"},
+                            {"type": "text", "text": f"漲跌: {change_string}", "size": "sm", "align": "right", "color": color_theme}
+                        ]
+                    }
+                ]
+            }
+        }
+
+        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+
+    except Exception as e:
+        print(f"💥 系統嚴重崩潰：{str(e)}")
+        return jsonify({"status": "error", "message": "伺服器內部錯誤"}), 200
         
       # 7. 組裝 LINE Flex Message 內容 (K線圖絕對通車、終極防護版)
         # 我們將圖片放在hero區，文字放在body區，移除所有複雜按鈕，只放文字按鈕，確保JSON乾淨。
