@@ -33,7 +33,8 @@ def get_chart():
         else:
             period, interval, title_text = '6mo', '1d', '日K線'
 
-        import yfinance as yf  # 確保是用 yfinance，而不是自己用 requests 爬網頁
+
+import yfinance as yf  # 確保是用 yfinance，而不是自己用 requests 爬網頁
 import pandas as pd
 import io
 import matplotlib
@@ -147,80 +148,3 @@ import mplfinance as mpf
     except Exception as e:
         print(f"💥 系統嚴重崩潰：{str(e)}")
         return jsonify({"status": "error", "message": "伺服器內部錯誤"}), 200
-        
-      # 7. 組裝 LINE Flex Message 內容 (K線圖絕對通車、終極防護版)
-        # 我們將圖片放在hero區，文字放在body區，移除所有複雜按鈕，只放文字按鈕，確保JSON乾淨。
-        
-        flex_contents = {
-            "type": "bubble",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"{str(stock_name)} ({str(stock_id)})",
-                        "weight": "bold",
-                        "size": "lg"
-                    },
-                    {
-                        "type": "text",
-                        "text": f"最新報價：{str(price_string)}",
-                        "size": "md",
-                        "margin": "md"
-                    },
-                    {"type": "separator", "margin": "lg"}
-                ]
-            }
-        }
-
-        # [核心關鍵] 圖片區：如果 final_image_url 存在，且是乾淨的 https 網址，我們才加入。
-        # 我們加入了 str() 強制轉型，防止 None 錯誤。
-        if final_image_url:
-            image_block = {
-                "type": "image",
-                "url": str(final_image_url).strip(), # strip() 移除可能導致JSON錯誤的空白
-                "size": "full",
-                "aspectMode": "cover", # 圖片裁切模式
-                "aspectRatio": "20:13", # 完美適配手機版型
-                "gravity": "center"
-            }
-            # 將圖片區設定為 Flex 的 Hero (圖片區)
-            flex_contents["hero"] = image_block
-
-        # 最後加入一個極簡的文字按鈕，防止空內容報錯 (使用最安全的 message action)
-        footer_block = {
-            "type": "box",
-            "layout": "horizontal",
-            "spacing": "sm",
-            "contents": [
-                {
-                    "type": "button",
-                    "style": "primary",
-                    "height": "sm",
-                    "action": {
-                        "type": "message",
-                        "label": "查看更多新聞",
-                        "text": f"新聞 {str(stock_id)}"
-                    }
-                }
-            ],
-            "margin": "lg"
-        }
-        flex_contents["body"]["contents"].append(footer_block)
-        
-        # 8. 成功回傳大禮包給 Make.com
-        return jsonify({
-            "status": "success",
-            "image_url": final_image_url,
-            "flex_contents": flex_contents
-        }), 200
-
-    except Exception as e:
-        # 萬一程式內部有其他未預期錯誤，捕捉並回傳錯誤訊息，防止 Make.com 拿到乾白畫面
-        return jsonify({"status": "error", "message": f"Server Error: {str(e)}"}), 200
-
-if __name__ == '__main__':
-    # Render 會自動指定 PORT 環境變數
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
