@@ -71,22 +71,21 @@ def get_chart():
         # 取得股票名稱
         stock_name = info.get('longName') or info.get('shortName') or stock_id
 
-        # 5. 繪製 K 線圖 (移除所有自訂參數，確保不報錯)
+        # 5. 繪製 K 線圖 (終極除錯：改用最純粹、無中文的 matplotlib 測試)
         buf = io.BytesIO()
         
-        # 這裡只保留最基本的繪圖參數
-        fig, axes = mpf.plot(
-            df, 
-            type='candle', 
-            volume=True, 
-            returnfig=True, 
-            figsize=(8, 5)
-        )
+        # 建立一個最簡單的畫布，畫一條從 (0,0) 到 (1,1) 的藍色斜線
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot([0, 1], [0, 1], label='Test Line')
+        ax.set_title(f"STOCK TEST - {stock_id}") # ❌ 完全不用中文
+        ax.legend()
         
-        axes[0].set_title(f"{stock_name} ({stock_id})", fontsize=14)
+        # 儲存
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
         buf.seek(0)
         plt.close(fig)
+
+        # --- 保持你原本的檢查代碼與 ImgBB 上傳不變 ---
 
         # --- 在這裡加入檢查代碼 ---
         img_api_key = os.environ.get("IMGBB_API_KEY")
