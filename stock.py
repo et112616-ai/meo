@@ -252,4 +252,35 @@ def get_holders():
             table_rows.append({"type": "separator", "color": "#eeeeee"})
 
         # 4. 組裝最終持股分頁 Flex JSON
-        flex_contents =
+        flex_contents = {
+            "type": "bubble",
+            "body": {
+                "type": "box", "layout": "vertical", "spacing": "sm",
+                "contents": [
+                    {"type": "text", "text": f"📊 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": "條件：大股東張數大於1000張變動", "size": "xs", "color": "#888888", "margin": "xs"},
+                    {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
+                    {"type": "separator", "margin": "lg"},
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+                        ]
+                    }
+                ]
+            }
+        }
+        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+
+    except Exception as e:
+        print(f"💥 籌碼系統發生錯誤：{str(e)}")
+        return jsonify({"status": "error", "message": f"籌碼中心故障: {str(e)}"}), 200
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
