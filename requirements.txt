@@ -1,8 +1,9 @@
 Flask
-yfinance
-mplfinance
-matplotlib
-pandas
 requests
+numpy>=1.26.0
+pandas>=2.1.0
 lxml>=5.2.0
+yfinance>=0.2.38
+mplfinance>=0.12.10b0
+matplotlib>=3.8.0
 FinMind>=1.6.4
