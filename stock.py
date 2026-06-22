@@ -114,76 +114,28 @@ def get_chart():
             
         final_image_url = img_resp.json()['data']['url']
 
-      # 7. 組裝 LINE Flex Message 內容 (終極防禦、保證過關版)
+      # 7. 組裝 LINE Flex Message 內容 (純文字終極測試版，排除所有圖片與按鈕干擾)
         flex_contents = {
             "type": "bubble",
             "body": {
                 "type": "box",
                 "layout": "vertical",
-                "spacing": "md",
                 "contents": [
-                    # 標題區
                     {
                         "type": "text",
-                        "text": f"{str(stock_name)} ({str(stock_id)})",
+                        "text": f"測試：{str(stock_name)} ({str(stock_id)})",
                         "weight": "bold",
                         "size": "lg"
                     },
-                    # 價格資訊區 (加上安全防護，避免 None 導致 JSON 破裂)
                     {
-                        "type": "box",
-                        "layout": "horizontal",
-                        "contents": [
-                            {"type": "text", "text": f"最新價: {str(price_string)}", "size": "sm", "weight": "bold"},
-                            {"type": "text", "text": f"漲跌: {str(change_string)}", "size": "sm", "align": "right", "color": str(color_theme) if color_theme else "#000000"}
-                        ]
-                    },
-                    {"type": "separator"}
+                        "type": "text",
+                        "text": f"最新價格：{str(price_string)}",
+                        "size": "md",
+                        "margin": "md"
+                    }
                 ]
             }
         }
-
-        # K線圖主體 (有圖片網址才加入)
-        if final_image_url:
-            image_block = {
-                "type": "image",
-                "url": str(final_image_url),
-                "size": "full",
-                "aspectMode": "fit",
-                "aspectRatio": "4:3"
-            }
-            flex_contents["body"]["contents"].append(image_block)
-            flex_contents["body"]["contents"].append({"type": "separator"})
-
-        # 按鈕區 (精簡版，移除可能干擾的複數按鈕，先放一排最簡單的測試)
-        button_block = {
-            "type": "box",
-            "layout": "horizontal",
-            "spacing": "sm",
-            "contents": [
-                {
-                    "type": "button",
-                    "style": "primary",
-                    "height": "sm",
-                    "action": {
-                        "type": "message",
-                        "label": "即時報價",
-                        "text": f"報價 {str(stock_id)}"
-                    }
-                },
-                {
-                    "type": "button",
-                    "style": "secondary",
-                    "height": "sm",
-                    "action": {
-                        "type": "message",
-                        "label": "個股新聞",
-                        "text": f"新聞 {str(str(stock_id))}"
-                    }
-                }
-            ]
-        }
-        flex_contents["body"]["contents"].append(button_block)
         
         # 8. 成功回傳大禮包給 Make.com
         return jsonify({
