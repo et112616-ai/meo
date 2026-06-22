@@ -69,7 +69,7 @@ def get_chart():
                 "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
             }
             output_data = {"status": "success", "flex_contents": flex_contents}
-            return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
+          return jsonify({"status": "success", "flex_contents": flex_contents}), 200)
 
         latest_close = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
@@ -147,9 +147,8 @@ def get_chart():
             }
         }
         
-        # 🌟 核心防禦 3：回歸當初 Make 最愛的經典成功包裝，但強行熨平網址反斜線
-        output_data = {"status": "success", "flex_contents": flex_contents}
-        return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
+# ✅ 改成這行
+return jsonify({"status": "success", "flex_contents": flex_contents}), 200
 
     except Exception as e:
         print(f"💥 K線主控系統崩潰：{str(e)}")
@@ -178,8 +177,8 @@ def get_holders():
         if resp.get("status") != 200 or not resp.get("data") or len(resp["data"]) == 0:
             flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name}({stock_id}) 的大股東籌碼資料，請稍後再試。"}]}}
             output_data = {"status": "success", "flex_contents": flex_contents}
-            return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
-            
+            return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+
         df = pd.DataFrame(resp["data"])
         df_1000 = df[df["shareholding_class"] == "1000以上"].copy()
         
@@ -189,7 +188,7 @@ def get_holders():
                 df_1000 = df[df["shareholding_class"] == classes[-1]].copy()
             else:
                 flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ {stock_name} 的大股東資料格式不符。"}]}}
-                return Response(json.dumps({"status": "success", "flex_contents": flex_contents}, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
+                return jsonify({"status": "success", "flex_contents": flex_contents}), 200(json.dumps({"status": "success", "flex_contents": flex_contents}, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
         df_1000 = df_1000.sort_values("date", ascending=False)
         if len(df_1000) > 1:
@@ -264,8 +263,8 @@ def get_holders():
             }
         }
         
-        output_data = {"status": "success", "flex_contents": flex_contents}
-        return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
+# ✅ 改成這行
+return jsonify({"status": "success", "flex_contents": flex_contents}), 200
 
     except Exception as e:
         print(f"💥 籌碼系統發生錯誤：{str(e)}")
