@@ -76,22 +76,30 @@ def get_chart():
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({'' if change >= 0 else ''}{change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000" # 台灣紅漲綠跌
 
-        # 6. 繪製 K 線圖 (回歸最正統的物件導向儲存法)
+# 6. 繪製 K 線圖 (純英文標題防護版，徹底避開 Linux 字型損毀圖片的問題)
         buf = io.BytesIO()
         
+        # 英文時段標籤映射
+        en_title_map = {
+            '1m': '1 Min K-Line',
+            '5m': '5 Min K-Line',
+            'weekly': 'Weekly K-Line',
+            'daily': 'Daily K-Line'
+        }
+        en_title = en_title_map.get(action_data, 'Daily K-Line')
+
         # 這裡單純繪圖，拿到 fig 物件
         fig, axes = mpf.plot(
             df, type='candle', volume=True, returnfig=True, figsize=(10, 6),
-            style='yahoo' # 白底黑字，最適合手機
+            style='yahoo' # 白底黑字
         )
         
-        # 設定標題
-        axes[0].set_title(f"{stock_id} - {title_text}", fontsize=14, color='black')
+        # 🌟 核心關鍵：標題全部改成英文！拒絕任何中文字元，防止編碼損毀圖檔
+        axes[0].set_title(f"STOCK: {stock_id} ({en_title})", fontsize=14, color='black')
         
-        # ⭕ 核心修正：由 fig 亲自行儲存到 buf，並強制加上白底
+        # 由 fig 執行儲存到 buf
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor='white')
         
-        # 🚨 在撥回指針前，先檢查到底有沒有把資料寫進記憶體
         file_size = buf.tell()
         print(f"=== [DEBUG] 記憶體中圖片檔案大小 ===: {file_size} bytes")
         
