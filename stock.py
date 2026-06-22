@@ -37,20 +37,28 @@ def get_chart():
         # 3. 轉換台灣股市代號格式 (例如 2330 轉 2330.TW)
         yf_code = f"{stock_id}.TW"
         
-        # 4. 用 yfinance 抓取歷史數字資料
+       # 4. 用 yfinance 抓取歷史數字資料 (優化 period 確保一定有舊資料可以畫圖)
         ticker = yf.Ticker(yf_code)
+        
+        # 為了防止盤後或非交易日抓到空資料，如果 action_data 沒有特別指定，我們把範圍擴大到 3 個月
+        if action_data not in ['1m', '5m', 'weekly']:
+            period = '3mo' 
+            
         df = ticker.history(period=period, interval=interval)
         
+        # 🚨 印出 Debug 訊息到 Render Log，讓我們看看到底抓到幾筆資料
+        print(f"=== [DEBUG] 股票 {stock_id} 抓取到的資料筆數 ===: {df.shape}")
+        
         # 🚨 【防空警報 1】檢查有沒有抓到 Yahoo 資料
-        if df.empty:
-            print(f"❌ 錯誤：Yahoo Finance 找不到代號 {yf_code} 的資料！")
+        if df.empty or len(df) < 2:
+            print(f"❌ 錯誤：Yahoo Finance 抓到的資料太少或為空，無法畫圖！")
             return jsonify({
                 "status": "error",
                 "flex_contents": {
                     "type": "bubble",
                     "body": {
                         "type": "box", "layout": "vertical",
-                        "contents": [{"type": "text", "text": f"找不到股票代號 {stock_id}，請確認是否輸入正確。", "color": "#ff0000"}]
+                        "contents": [{"type": "text", "text": f"股票代號 {stock_id} 目前時段無足夠交易資料可產出圖表。", "color": "#ff0000"}]
                     }
                 }
             }), 200
@@ -67,6 +75,19 @@ def get_chart():
         price_string = f"{latest_close:,.2f}"
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({'' if change >= 0 else ''}{change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000" # 台灣紅漲綠跌
+
+        # 6. 繪製 K 線圖 (改用極度穩定的 binance 風格)
+        buf = io.BytesIO()
+        
+        # 🚨 關鍵防禦：設定為 binance 亮色風格，並強制傳入完整的 fig, axes
+        fig, axes = mpf.plot(
+            df, type='candle', volume=True, returnfig=True, figsize=(10, 6),
+            style='binance', 
+            savefig=dict(fname=buf, format='png', bbox_inches='tight', dpi=100) # 直接用 mplfinance 的內建安全存檔機制
+        )
+        
+        buf.seek(0) # 強制將記憶體指針撥回開頭
+        plt.close('all') # 徹底關閉所有可能殘留的畫布，釋放記憶體
 
         # 6. 繪製 K 線圖
         buf = io.BytesIO()
