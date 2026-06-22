@@ -95,13 +95,13 @@ def get_chart():
         buf.seek(0)
         plt.close('all')
      
-        # 🌟 [終極大修正]：如果 Render 給我們的是 http，強迫把它換成 https！
-        if base_url.startswith('http://'):
-            base_url = base_url.replace('http://', 'https://', 1)
+        # 6. 直接手動指定 Render 的安全加密網域 (徹底斷絕 Flask 猜測網址出錯的可能)
+        # 🌟 這裡直接寫死你專屬的網址，保證 100% 是安全加密的 https
+        base_url = "https://meo-qput.onrender.com"
             
         final_image_url = f"{base_url}/images/{stock_id}.png"
-        print(f"=== [DEBUG] 本地自產圖片網址 (強制安全加密版) ===: {final_image_url}")
-
+        print(f"=== [DEBUG] 本地自產圖片網址 (手動絕對領域版) ===: {final_image_url}")
+        
         # 7. 組裝 LINE Flex Message
         flex_contents = {
             "type": "bubble",
