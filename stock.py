@@ -1,30 +1,26 @@
 import os
 import io
 import requests
-import json  # 🌟 引入標準 json 庫
+import json
+import re  # 🌟 引入正則表達式，用來強力清洗代碼
 import pandas as pd
 from flask import Flask, request, jsonify, send_file, Response
 import yfinance as yf
 import mplfinance as mpf
 import matplotlib
-matplotlib.use('Agg')  # 確保無顯示器 Linux 環境不崩潰
+matplotlib.use('Agg')  
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
-# 🌟 記憶體圖片快取（給 K 線圖直連使用）
 IMAGE_CACHE = {}
 
-# 🌟 台股精準中文名稱對照導航庫
 STOCK_NAME_MAP = {
     "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
     "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
     "4979": "華星光", "0052": "富邦科技", "009816": "凱基台灣TOP50"
 }
 
-# -------------------------------------------------------------------------
-# 🛠️ 路由 1：圖片伺服器
-# -------------------------------------------------------------------------
 @app.route('/images/<image_key>.png', methods=['GET'])
 def serve_image(image_key):
     img_bytes = IMAGE_CACHE.get(image_key)
@@ -32,9 +28,8 @@ def serve_image(image_key):
         return send_file(io.BytesIO(img_bytes), mimetype='image/png')
     return "Image not found", 404
 
-
 # -------------------------------------------------------------------------
-# 🛠️ 路由 2：【K線圖主控中心】反斜線反制版
+# 🛠️ 路由 2：【K線圖主控中心】LINE 官方大和解版
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -43,24 +38,34 @@ def get_chart():
         raw_id = req_data.get('stock_id', '').strip()
         action_data = req_data.get('data', '').strip()
 
-        stock_id = raw_id.replace("K線", "").replace("即時", "").strip().split()[0]
+        # 🌟 鋼鐵清洗：只保留數字與英文字母，徹底移除任何 Make 帶過來的換行或雜質
+        stock_id = re.sub(r'[^a-zA-Z0-9]', '', raw_id.replace("K線", "").replace("即時", ""))[:10]
+        
         if not stock_id:
             return jsonify({"status": "error", "message": "Missing stock_id"}), 200
 
+        # 時段判定
         if '1m' in action_data:
             period, interval, title_text = '1d', '1m', '1 Min K-Line'
+            btn_suffix = "1m"
         elif '3m' in action_data:
             period, interval, title_text = '1d', '3m', '3 Min K-Line'
+            btn_suffix = "3m"
         elif '5m' in action_data:
             period, interval, title_text = '1d', '5m', '5 Min K-Line'
+            btn_suffix = "5m"
         elif '30m' in action_data:
             period, interval, title_text = '5d', '30m', '30 Min K-Line'
+            btn_suffix = "30m"
         elif 'weekly' in action_data:
             period, interval, title_text = '1y', '1wk', 'Weekly K-Line'
+            btn_suffix = "weekly"
         elif 'monthly' in action_data:
             period, interval, title_text = '5y', '1mo', 'Monthly K-Line'
+            btn_suffix = "monthly"
         else:
             period, interval, title_text = '3mo', '1d', 'Daily K-Line'
+            btn_suffix = "daily"
 
         stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
 
@@ -72,7 +77,7 @@ def get_chart():
             flex_contents = {
                 "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
             }
-            return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+            return Response(json.dumps({"status": "success", "flex_contents": flex_contents}, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
         latest_close = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
@@ -80,7 +85,7 @@ def get_chart():
         change_percent = (change / prev_close) * 100
         
         price_string = f"{latest_close:,.2f}"
-        change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({'' if change >= 0 else ''}{change_percent:.2f}%)"
+        change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000"
 
         buf = io.BytesIO()
@@ -96,6 +101,7 @@ def get_chart():
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
+        # 🌟 確保按鈕發送的文字絕對乾淨，100% 避開 LINE 400 錯誤
         flex_contents = {
             "type": "bubble",
             "body": {
@@ -124,7 +130,7 @@ def get_chart():
                     {
                         "type": "box", "layout": "vertical",
                         "contents": [
-                            {"type": "image", "url": final_image_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
+                            {"type": "image", "url": str(final_image_url).strip(), "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
                             {
                                 "type": "box", "layout": "horizontal", "margin": "md",
                                 "contents": [
@@ -149,10 +155,8 @@ def get_chart():
             }
         }
         
-        # 🌟 終極殺招：強制不讓 Python 逃避斜線，輸出完美無斜線轉義的 JSON
         output_data = {"status": "success", "flex_contents": flex_contents}
-        json_output = json.dumps(output_data, ensure_ascii=False)
-        return Response(json_output, content_type='application/json; charset=utf-8'), 200
+        return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
     except Exception as e:
         print(f"💥 K線主控系統崩潰：{str(e)}")
@@ -168,7 +172,8 @@ def get_holders():
         req_data = request.get_json() or {}
         raw_id = req_data.get('stock_id', '').strip()
         
-        stock_id = raw_id.replace("持股", "").strip().split()[0]
+        # 🌟 同步強力清洗
+        stock_id = re.sub(r'[^0-9]', '', raw_id.replace("持股", ""))[:10]
         stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
 
         fm_token = os.environ.get("FINMIND_TOKEN", "")
