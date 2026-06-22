@@ -128,29 +128,36 @@ def get_chart():
             print("ERROR: IMGBB_API_KEY is missing!")
             return jsonify({"status": "error", "message": "環境變數缺少 IMGBB_API_KEY"}), 200
 
+        # 這裡保持你原本使用的 api.imgbb.com 網址
         img_resp = requests.post(
-            "https://api.api.imgbb.com/1/upload", # 註：有些舊網址是 api.imgbb.com，我們保持你原本能動的
+            "https://api.imgbb.com/1/upload",
             data={"key": img_api_key, "image": img_base64}
         )
         
-        img_json = img_resp.json()
+        # 🌟 安全防禦：先將回應印在 Log 中，方便我們抓妖
+        try:
+            img_json = img_resp.json()
+            print(f"=== [DEBUG] ImgBB 完整回傳 JSON ===: {img_json}")
+        except Exception as json_err:
+            print(f"❌ 錯誤：解析 ImgBB 回應 JSON 失敗: {str(json_err)}")
+            img_json = {}
         
-        # 🌟【終極大抓包】直接把 ImgBB 吐給我們的所有東西印在 Log 裡！
-        print(f"=== [DEBUG] ImgBB 完整回傳 JSON ===: {img_json}")
-
-        # 使用最安全的、絕對不崩潰的抓取法：先抓 url_viewer，如果沒有再抓 url
-        # 我們先看看 Log 裡到底長怎樣
-        if 'data' in img_json:
-            res_data = img_json['data']
-            # 如果有 image 階層就拿，沒有就拿最外層的 url
-            if 'image' in res_data and 'url' in res_data['image']:
-                final_image_url = res_data['image']['url']
-            else:
+        # 🌟 採用 100% 絕對不崩潰的防錯邏輯來抓取網址
+        final_image_url = None
+        if isinstance(img_json, dict) and img_json.get('success') is True:
+            res_data = img_json.get('data', {})
+            # 優先嘗試幾種常見的直連欄位，抓不到就抓預設的 url
+            if 'image' in res_data and isinstance(res_data['image'], dict):
+                final_image_url = res_data['image'].get('url')
+            
+            if not final_image_url:
                 final_image_url = res_data.get('url')
-        else:
-            final_image_url = None
-
+        
         print(f"=== [DEBUG] 最終萃取出的圖片網址 ===: {final_image_url}")
+
+        # 🚨 如果網址是空的，強制給一個替代的公開圖片，或者不塞 hero，絕對不讓 Flex 結構壞掉
+        if not final_image_url:
+            print("❌ 警告：未成功取得 ImgBB 網址，將生成不帶圖片的純文字 Flex 訊息")
         
         # 8. 組裝完美的 K 線圖 LINE Flex Message 內容
         flex_contents = {
