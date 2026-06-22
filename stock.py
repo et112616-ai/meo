@@ -114,85 +114,77 @@ def get_chart():
             
         final_image_url = img_resp.json()['data']['url']
 
-        # 7. 組裝 LINE Flex Message 內容 (完整功能、結構修正安全版)
+      # 7. 組裝 LINE Flex Message 內容 (終極防禦、保證過關版)
         flex_contents = {
             "type": "bubble",
             "body": {
                 "type": "box",
                 "layout": "vertical",
+                "spacing": "md",
                 "contents": [
-                    # 第一排：股價與漲跌資訊
+                    # 標題區
+                    {
+                        "type": "text",
+                        "text": f"{str(stock_name)} ({str(stock_id)})",
+                        "weight": "bold",
+                        "size": "lg"
+                    },
+                    # 價格資訊區 (加上安全防護，避免 None 導致 JSON 破裂)
                     {
                         "type": "box",
                         "layout": "horizontal",
                         "contents": [
-                            {
-                                "type": "text",
-                                "text": f"{stock_name} ({stock_id})",
-                                "weight": "bold",
-                                "size": "md",
-                                "flex": 1,
-                                "gravity": "center"
-                            },
-                            {
-                                "type": "box",
-                                "layout": "vertical",
-                                "contents": [
-                                    {"type": "text", "text": price_string, "weight": "bold", "size": "xl", "align": "right", "color": color_theme},
-                                    {"type": "text", "text": change_string, "size": "xs", "align": "right", "color": color_theme}
-                                ],
-                                "flex": 1
-                            }
+                            {"type": "text", "text": f"最新價: {str(price_string)}", "size": "sm", "weight": "bold"},
+                            {"type": "text", "text": f"漲跌: {str(change_string)}", "size": "sm", "align": "right", "color": str(color_theme) if color_theme else "#000000"}
                         ]
                     },
-                    {"type": "separator", "margin": "md"},
-                    
-                    # 第二排：分K切換按鈕
-                    {
-                        "type": "box",
-                        "layout": "horizontal",
-                        "margin": "md",
-                        "spacing": "sm",
-                        "contents": [
-                            {"type": "button", "action": {"type": "postback", "label": "1分K", "data": "1m", "displayText": f"查詢 {stock_id} 1分K"}, "style": "secondary", "height": "sm"},
-                            {"type": "button", "action": {"type": "postback", "label": "5分K", "data": "5m", "displayText": f"查詢 {stock_id} 5分K"}, "style": "secondary", "height": "sm"},
-                            {"type": "button", "action": {"type": "postback", "label": "日K", "data": "1d", "displayText": f"查詢 {stock_id} 日K"}, "style": "primary", "height": "sm"},
-                            {"type": "button", "action": {"type": "postback", "label": "週K", "data": "weekly", "displayText": f"查詢 {stock_id} 週K"}, "style": "secondary", "height": "sm"}
-                        ]
-                    },
-                    {"type": "separator", "margin": "md"}
+                    {"type": "separator"}
                 ]
             }
         }
 
-        # 第三排：K線圖主體（如果有成功上傳圖片，才動態塞入體中）
+        # K線圖主體 (有圖片網址才加入)
         if final_image_url:
             image_block = {
                 "type": "image",
-                "url": final_image_url,
+                "url": str(final_image_url),
                 "size": "full",
                 "aspectMode": "fit",
-                "aspectRatio": "4:3",
-                "margin": "md"
+                "aspectRatio": "4:3"
             }
             flex_contents["body"]["contents"].append(image_block)
+            flex_contents["body"]["contents"].append({"type": "separator"})
 
-        # 第四排：延伸功能按鈕（塞在最後面）
-        action_buttons = {
+        # 按鈕區 (精簡版，移除可能干擾的複數按鈕，先放一排最簡單的測試)
+        button_block = {
             "type": "box",
             "layout": "horizontal",
-            "margin": "md",
             "spacing": "sm",
             "contents": [
-                {"type": "button", "action": {"type": "message", "label": "即時報價", "text": f"報價 {stock_id}"}, "style": "link", "height": "sm"},
-                {"type": "button", "action": {"type": "message", "label": "三大法人", "text": f"法人 {stock_id}"}, "style": "link", "height": "sm"},
-                {"type": "button", "action": {"type": "message", "label": "個股新聞", "text": f"新聞 {stock_id}"}, "style": "link", "height": "sm"}
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "height": "sm",
+                    "action": {
+                        "type": "message",
+                        "label": "即時報價",
+                        "text": f"報價 {str(stock_id)}"
+                    }
+                },
+                {
+                    "type": "button",
+                    "style": "secondary",
+                    "height": "sm",
+                    "action": {
+                        "type": "message",
+                        "label": "個股新聞",
+                        "text": f"新聞 {str(str(stock_id))}"
+                    }
+                }
             ]
         }
+        flex_contents["body"]["contents"].append(button_block)
         
-        # 加一條分隔線並加入功能按鈕
-        flex_contents["body"]["contents"].append({"type": "separator", "margin": "md"})
-        flex_contents["body"]["contents"].append(action_buttons)
         # 8. 成功回傳大禮包給 Make.com
         return jsonify({
             "status": "success",
