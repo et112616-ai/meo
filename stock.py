@@ -2,7 +2,7 @@ import os
 import io
 import requests
 import json
-import re  # 🌟 引入正則表達式，用來強力清洗代碼
+import re
 import pandas as pd
 from flask import Flask, request, jsonify, send_file, Response
 import yfinance as yf
@@ -29,7 +29,7 @@ def serve_image(image_key):
     return "Image not found", 404
 
 # -------------------------------------------------------------------------
-# 🛠️ 路由 2：【K線圖主控中心】LINE 官方大和解版
+# 🛠️ 路由 2：【K線圖主控中心】自帶外殼版
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -37,35 +37,28 @@ def get_chart():
         req_data = request.get_json() or {}
         raw_id = req_data.get('stock_id', '').strip()
         action_data = req_data.get('data', '').strip()
-
-        # 🌟 鋼鐵清洗：只保留數字與英文字母，徹底移除任何 Make 帶過來的換行或雜質
-        stock_id = re.sub(r'[^a-zA-Z0-9]', '', raw_id.replace("K線", "").replace("即時", ""))[:10]
         
+        # 🌟 接收 Make 傳過來的 replyToken
+        reply_token = req_data.get('replyToken', '')
+
+        stock_id = re.sub(r'[^a-zA-Z0-9]', '', raw_id.replace("K線", "").replace("即時", ""))[:10]
         if not stock_id:
             return jsonify({"status": "error", "message": "Missing stock_id"}), 200
 
-        # 時段判定
         if '1m' in action_data:
             period, interval, title_text = '1d', '1m', '1 Min K-Line'
-            btn_suffix = "1m"
         elif '3m' in action_data:
             period, interval, title_text = '1d', '3m', '3 Min K-Line'
-            btn_suffix = "3m"
         elif '5m' in action_data:
             period, interval, title_text = '1d', '5m', '5 Min K-Line'
-            btn_suffix = "5m"
         elif '30m' in action_data:
             period, interval, title_text = '5d', '30m', '30 Min K-Line'
-            btn_suffix = "30m"
         elif 'weekly' in action_data:
             period, interval, title_text = '1y', '1wk', 'Weekly K-Line'
-            btn_suffix = "weekly"
         elif 'monthly' in action_data:
             period, interval, title_text = '5y', '1mo', 'Monthly K-Line'
-            btn_suffix = "monthly"
         else:
             period, interval, title_text = '3mo', '1d', 'Daily K-Line'
-            btn_suffix = "daily"
 
         stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
 
@@ -74,94 +67,99 @@ def get_chart():
         df = ticker.history(period=period, interval=interval)
         
         if df.empty or len(df) < 2:
-            flex_contents = {
-                "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
-            }
-            return Response(json.dumps({"status": "success", "flex_contents": flex_contents}, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
+            bubble_block = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}}
+        else:
+            latest_close = df['Close'].iloc[-1]
+            prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
+            change = latest_close - prev_close
+            change_percent = (change / prev_close) * 100
+            
+            price_string = f"{latest_close:,.2f}"
+            change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
+            color_theme = "#ff0000" if change >= 0 else "#008000"
 
-        latest_close = df['Close'].iloc[-1]
-        prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
-        change = latest_close - prev_close
-        change_percent = (change / prev_close) * 100
-        
-        price_string = f"{latest_close:,.2f}"
-        change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
-        color_theme = "#ff0000" if change >= 0 else "#008000"
+            buf = io.BytesIO()
+            fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
+            axes[0].set_title(f"STOCK: {stock_id} ({title_text})", fontsize=14, color='black')
+            fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor='white')
+            
+            image_key = f"chart_{stock_id}"
+            IMAGE_CACHE[image_key] = buf.getvalue()
+            buf.seek(0)
+            plt.close('all')
 
-        buf = io.BytesIO()
-        fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
-        axes[0].set_title(f"STOCK: {stock_id} ({title_text})", fontsize=14, color='black')
-        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor='white')
-        
-        image_key = f"chart_{stock_id}"
-        IMAGE_CACHE[image_key] = buf.getvalue()
-        buf.seek(0)
-        plt.close('all')
+            base_url = "https://meo-qput.onrender.com"
+            final_image_url = f"{base_url}/images/{image_key}.png"
 
-        base_url = "https://meo-qput.onrender.com"
-        final_image_url = f"{base_url}/images/{image_key}.png"
-
-        # 🌟 確保按鈕發送的文字絕對乾淨，100% 避開 LINE 400 錯誤
-        flex_contents = {
-            "type": "bubble",
-            "body": {
-                "type": "box", "layout": "vertical", "spacing": "md",
-                "contents": [
-                    {
-                        "type": "box", "layout": "horizontal", "alignment": "center",
-                        "contents": [
-                            {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "xl", "flex": 3, "gravity": "center"},
-                            {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
-                        ]
-                    },
-                    {
-                        "type": "box", "layout": "horizontal", "spacing": "xs",
-                        "contents": [
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}},
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "日", "text": f"K線 {stock_id} daily"}},
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週", "text": f"K線 {stock_id} weekly"}},
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
-                        ]
-                    },
-                    {"type": "separator"},
-                    {
-                        "type": "box", "layout": "vertical",
-                        "contents": [
-                            {"type": "image", "url": str(final_image_url).strip(), "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
-                            {
-                                "type": "box", "layout": "horizontal", "margin": "md",
-                                "contents": [
-                                    {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
-                                    {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
-                                ]
-                            }
-                        ]
-                    },
-                    {"type": "separator"},
-                    {
-                        "type": "box", "layout": "horizontal", "spacing": "xs",
-                        "contents": [
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+            bubble_block = {
+                "type": "bubble",
+                "body": {
+                    "type": "box", "layout": "vertical", "spacing": "md",
+                    "contents": [
+                        {
+                            "type": "box", "layout": "horizontal", "alignment": "center",
+                            "contents": [
+                                {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "xl", "flex": 3, "gravity": "center"},
+                                {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
+                            ]
+                        },
+                        {
+                            "type": "box", "layout": "horizontal", "spacing": "xs",
+                            "contents": [
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "日", "text": f"K線 {stock_id} daily"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週", "text": f"K線 {stock_id} weekly"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
+                            ]
+                        },
+                        {"type": "separator"},
+                        {
+                            "type": "box", "layout": "vertical",
+                            "contents": [
+                                {"type": "image", "url": str(final_image_url).strip(), "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
+                                {
+                                    "type": "box", "layout": "horizontal", "margin": "md",
+                                    "contents": [
+                                        {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
+                                        {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
+                                    ]
+                                }
+                            ]
+                        },
+                        {"type": "separator"},
+                        {
+                            "type": "box", "layout": "horizontal", "spacing": "xs",
+                            "contents": [
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
                         ]
                     }
                 ]
             }
         }
         
-        output_data = {"status": "success", "flex_contents": flex_contents}
-        return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
+        # 🌟 核心進化：直接在 Python 幫 LINE 把整包餐盒打包好！
+        line_payload = {
+            "replyToken": reply_token,
+            "messages": [
+                {
+                    "type": "flex",
+                    "altText": "K線圖查詢結果",
+                    "contents": bubble_block
+                }
+            ]
+        }
+        return Response(json.dumps(line_payload, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
     except Exception as e:
         print(f"💥 K線主控系統崩潰：{str(e)}")
         return jsonify({"status": "error", "message": f"Server Error: {str(e)}"}), 200
-
 
 # -------------------------------------------------------------------------
 # 🛠️ 路由 3：【千張大股東籌碼中心】
@@ -171,8 +169,8 @@ def get_holders():
     try:
         req_data = request.get_json() or {}
         raw_id = req_data.get('stock_id', '').strip()
+        reply_token = req_data.get('replyToken', '')
         
-        # 🌟 同步強力清洗
         stock_id = re.sub(r'[^0-9]', '', raw_id.replace("持股", ""))[:10]
         stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
 
@@ -183,97 +181,105 @@ def get_holders():
         resp = requests.get(url, params=params).json()
         
         if resp.get("status") != 200 or not resp.get("data") or len(resp["data"]) == 0:
-            flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name}({stock_id}) 的大股東籌碼資料，請稍後再試。"}]}}
-            output_data = {"status": "success", "flex_contents": flex_contents}
-            return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
-            
-        df = pd.DataFrame(resp["data"])
-        df_1000 = df[df["shareholding_class"] == "1000以上"].copy()
-        
-        if df_1000.empty:
-            classes = df["shareholding_class"].unique()
-            if len(classes) > 0:
-                df_1000 = df[df["shareholding_class"] == classes[-1]].copy()
-            else:
-                flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ {stock_name} 的大股東資料格式不符。"}]}}
-                return Response(json.dumps({"status": "success", "flex_contents": flex_contents}, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
-
-        df_1000 = df_1000.sort_values("date", ascending=False)
-        
-        if len(df_1000) > 1:
-            df_1000['diff'] = df_1000['proportions'].diff(-1)
+            bubble_block = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name}({stock_id}) 的大股東籌碼資料，請稍後再試。"}]}}
         else:
-            df_1000['diff'] = 0.0
+            df = pd.DataFrame(resp["data"])
+            df_1000 = df[df["shareholding_class"] == "1000以上"].copy()
             
-        df_4 = df_1000.head(4).copy()
+            if df_1000.empty:
+                classes = df["shareholding_class"].unique()
+                if len(classes) > 0:
+                    df_1000 = df[df["shareholding_class"] == classes[-1]].copy()
+                else:
+                    bubble_block = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ {stock_name} 的大股東資料格式不符。"}]}}
+                    line_payload = {"replyToken": reply_token, "messages": [{"type": "flex", "altText": "大股東籌碼", "contents": bubble_block}]}
+                    return Response(json.dumps(line_payload, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
-        table_rows = [
-            {
-                "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "xs",
-                "contents": [
-                    {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center"},
-                    {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center"},
-                    {"type": "text", "text": "增減", "weight": "bold", "size": "xs", "align": "center"},
-                    {"type": "text", "text": "人數", "weight": "bold", "size": "xs", "align": "center"}
-                ]
-            },
-            {"type": "separator"}
-        ]
-
-        for _, row in df_4.iterrows():
-            raw_date = str(row.get("date", "----"))
-            date_str = raw_date[5:].replace("-", "/") if len(raw_date) >= 10 else raw_date
-            
-            proportions_val = row.get("proportions", 0.0)
-            ratio_str = f"{proportions_val:.2f}%"
-            
-            diff_val = row.get('diff', 0.0)
-            if pd.isna(diff_val):
-                diff_str, diff_color = "--", "#000000"
+            df_1000 = df_1000.sort_values("date", ascending=False)
+            if len(df_1000) > 1:
+                df_1000['diff'] = df_1000['proportions'].diff(-1)
             else:
-                diff_str = f"+{diff_val:.2f}%" if diff_val >= 0 else f"{diff_val:.2f}%"
-                diff_color = "#ff0000" if diff_val >= 0 else "#008000"
+                df_1000['diff'] = 0.0
                 
-            shareholders_val = row.get("number_of_shareholders", 0)
-            count_str = f"{int(shareholders_val):,}人"
+            df_4 = df_1000.head(4).copy()
 
-            row_block = {
-                "type": "box", "layout": "horizontal", "padding": "xs",
-                "contents": [
-                    {"type": "text", "text": date_str, "size": "xs", "align": "center"},
-                    {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold"},
-                    {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold"},
-                    {"type": "text", "text": count_str, "size": "xs", "align": "center"}
-                ]
-            }
-            table_rows.append(row_block)
-            table_rows.append({"type": "separator", "color": "#eeeeee"})
+            table_rows = [
+                {
+                    "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "xs",
+                    "contents": [
+                        {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center"},
+                        {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center"},
+                        {"type": "text", "text": "增減", "weight": "bold", "size": "xs", "align": "center"},
+                        {"type": "text", "text": "人數", "weight": "bold", "size": "xs", "align": "center"}
+                    ]
+                },
+                {"type": "separator"}
+            ]
 
-        flex_contents = {
-            "type": "bubble",
-            "body": {
-                "type": "box", "layout": "vertical", "spacing": "sm",
-                "contents": [
-                    {"type": "text", "text": f"📊 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
-                    {"type": "text", "text": "條件：大股東張數大於1000張變動", "size": "xs", "color": "#888888", "margin": "xs"},
-                    {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
-                    {"type": "separator", "margin": "lg"},
-                    {
-                        "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
-                        "contents": [
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
-                        ]
-                    }
-                ]
+            for _, row in df_4.iterrows():
+                raw_date = str(row.get("date", "----"))
+                date_str = raw_date[5:].replace("-", "/") if len(raw_date) >= 10 else raw_date
+                
+                proportions_val = row.get("proportions", 0.0)
+                ratio_str = f"{proportions_val:.2f}%"
+                
+                diff_val = row.get('diff', 0.0)
+                if pd.isna(diff_val):
+                    diff_str, diff_color = "--", "#000000"
+                else:
+                    diff_str = f"+{diff_val:.2f}%" if diff_val >= 0 else f"{diff_val:.2f}%"
+                    diff_color = "#ff0000" if diff_val >= 0 else "#008000"
+                    
+                shareholders_val = row.get("number_of_shareholders", 0)
+                count_str = f"{int(shareholders_val):,}人"
+
+                row_block = {
+                    "type": "box", "layout": "horizontal", "padding": "xs",
+                    "contents": [
+                        {"type": "text", "text": date_str, "size": "xs", "align": "center"},
+                        {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold"},
+                        {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold"},
+                        {"type": "text", "text": count_str, "size": "xs", "align": "center"}
+                    ]
+                }
+                table_rows.append(row_block)
+                table_rows.append({"type": "separator", "color": "#eeeeee"})
+
+            bubble_block = {
+                "type": "bubble",
+                "body": {
+                    "type": "box", "layout": "vertical", "spacing": "sm",
+                    "contents": [
+                        {"type": "text", "text": f"📊 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
+                        {"type": "text", "text": "條件：大股東張數大於1000張變動", "size": "xs", "color": "#888888", "margin": "xs"},
+                        {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
+                        {"type": "separator", "margin": "lg"},
+                        {
+                            "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
+                            "contents": [
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+                            ]
+                        }
+                    ]
+                }
             }
-        }
         
-        output_data = {"status": "success", "flex_contents": flex_contents}
-        return Response(json.dumps(output_data, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
+        # 🌟 籌碼也同步打包
+        line_payload = {
+            "replyToken": reply_token,
+            "messages": [
+                {
+                    "type": "flex",
+                    "altText": "大股東籌碼查詢結果",
+                    "contents": bubble_block
+                }
+            ]
+        }
+        return Response(json.dumps(line_payload, ensure_ascii=False), content_type='application/json; charset=utf-8'), 200
 
     except Exception as e:
         print(f"💥 籌碼系統發生錯誤：{str(e)}")
