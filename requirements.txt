@@ -1,9 +1,8 @@
-flask
+Flask
 yfinance
 mplfinance
-requests
-gunicorn
 matplotlib
 pandas
 requests
-FinMind
+lxml>=5.2.0
+FinMind>=1.6.4
