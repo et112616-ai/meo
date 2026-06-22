@@ -114,7 +114,9 @@ def get_chart():
             
         final_image_url = img_resp.json()['data']['url']
 
-      # 7. 組裝 LINE Flex Message 內容 (純文字終極測試版，排除所有圖片與按鈕干擾)
+      # 7. 組裝 LINE Flex Message 內容 (K線圖絕對通車、終極防護版)
+        # 我們將圖片放在hero區，文字放在body區，移除所有複雜按鈕，只放文字按鈕，確保JSON乾淨。
+        
         flex_contents = {
             "type": "bubble",
             "body": {
@@ -123,19 +125,55 @@ def get_chart():
                 "contents": [
                     {
                         "type": "text",
-                        "text": f"測試：{str(stock_name)} ({str(stock_id)})",
+                        "text": f"{str(stock_name)} ({str(stock_id)})",
                         "weight": "bold",
                         "size": "lg"
                     },
                     {
                         "type": "text",
-                        "text": f"最新價格：{str(price_string)}",
+                        "text": f"最新報價：{str(price_string)}",
                         "size": "md",
                         "margin": "md"
-                    }
+                    },
+                    {"type": "separator", "margin": "lg"}
                 ]
             }
         }
+
+        # [核心關鍵] 圖片區：如果 final_image_url 存在，且是乾淨的 https 網址，我們才加入。
+        # 我們加入了 str() 強制轉型，防止 None 錯誤。
+        if final_image_url:
+            image_block = {
+                "type": "image",
+                "url": str(final_image_url).strip(), # strip() 移除可能導致JSON錯誤的空白
+                "size": "full",
+                "aspectMode": "cover", # 圖片裁切模式
+                "aspectRatio": "20:13", # 完美適配手機版型
+                "gravity": "center"
+            }
+            # 將圖片區設定為 Flex 的 Hero (圖片區)
+            flex_contents["hero"] = image_block
+
+        # 最後加入一個極簡的文字按鈕，防止空內容報錯 (使用最安全的 message action)
+        footer_block = {
+            "type": "box",
+            "layout": "horizontal",
+            "spacing": "sm",
+            "contents": [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "height": "sm",
+                    "action": {
+                        "type": "message",
+                        "label": "查看更多新聞",
+                        "text": f"新聞 {str(stock_id)}"
+                    }
+                }
+            ],
+            "margin": "lg"
+        }
+        flex_contents["body"]["contents"].append(footer_block)
         
         # 8. 成功回傳大禮包給 Make.com
         return jsonify({
