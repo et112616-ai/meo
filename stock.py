@@ -114,13 +114,38 @@ def get_chart():
             
         final_image_url = img_resp.json()['data']['url']
 
-        # 7. 組裝 LINE 專用的四排旗艦版 Flex Message JSON 設計圖
+        # 7. 組裝 LINE Flex Message 內容 (極簡安全版，確保完全符合 LINE 規範)
         flex_contents = {
             "type": "bubble",
             "body": {
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
+                    {
+                        "type": "text",
+                        "text": f"{stock_name} ({stock_id})",
+                        "weight": "bold",
+                        "size": "xl"
+                    },
+                    {
+                        "type": "text",
+                        "text": "即時 K 線圖與分析",
+                        "size": "sm",
+                        "color": "#aaaaaa"
+                    }
+                ]
+            }
+        }
+
+        # 如果有成功拿到圖片網址，才塞入圖片區塊
+        if final_image_url:
+            flex_contents["hero"] = {
+                "type": "image",
+                "url": final_image_url,
+                "size": "full",
+                "aspectRatio": "20:13",
+                "aspectMode": "cover"
+            }
                     # 第一排：股價與漲跌資訊
                     {
                         "type": "box",
