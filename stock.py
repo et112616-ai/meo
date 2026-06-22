@@ -147,8 +147,12 @@ def get_chart():
                 }
             }), 200
 
-        final_image_url = img_json['data'].get('display_url', img_json['data'].get('url'))
-        print(f"=== [DEBUG] 最新圖片網址 ===: {final_image_url}")
+       
+        # ⭕ 100% 保證全天下都打得開的標準直連網址寫法：
+        if 'data' in img_json and 'image' in img_json['data']:
+            final_image_url = img_json['data']['image']['url']
+        else:
+            final_image_url = img_json['data'].get('url') # 備用
         
         # 8. 組裝完美的 K 線圖 LINE Flex Message 內容
         flex_contents = {
