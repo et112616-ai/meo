@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
-IMAGE_CACHE = {}
-
 STOCK_NAME_MAP = {
     "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
     "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
@@ -23,7 +21,7 @@ STOCK_NAME_MAP = {
 
 @app.route('/images/<image_key>.png', methods=['GET'])
 def serve_image(image_key):
-    # 🌟 改成直接讀取實體檔案，最安全穩定
+    # 🌟 直接讀取實體檔案，安全穩定，不怕休眠重啟
     filepath = f"{image_key}.png"
     if os.path.exists(filepath):
         return send_file(filepath, mimetype='image/png')
@@ -39,7 +37,7 @@ def get_chart():
         raw_id = req_data.get('stock_id', '').strip()
         action_data = req_data.get('data', '').strip()
 
-        # 🌟 核心防禦 1：徹底清洗代碼，去除任何按鈕夾帶的隱形文字
+        # 🌟 核心防禦 1：徹底清洗代碼
         stock_id = re.sub(r'[^a-zA-Z0-9]', '', raw_id.replace("K線", "").replace("即時", ""))[:10]
         if not stock_id:
             return jsonify({"status": "error", "message": "Missing stock_id"}), 200
@@ -65,12 +63,20 @@ def get_chart():
         ticker = yf.Ticker(yf_code)
         df = ticker.history(period=period, interval=interval)
         
+        # 情況 A：無資料的防禦
         if df.empty or len(df) < 2:
             flex_contents = {
-                "type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
+                "type": "bubble", 
+                "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]}
             }
-            return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+            line_flex_message = {
+                "type": "flex",
+                "altText": f"{stock_name} ({stock_id}) 查無資料",
+                "contents": flex_contents
+            }
+            return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
+        # 情況 B：資料正常，開始計算與畫圖
         latest_close = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
         change = latest_close - prev_close
@@ -80,19 +86,17 @@ def get_chart():
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000"
 
-        # ✅ 替換成以下「實體檔案儲存版」：
+        # 🌟 儲存實體圖表
         image_key = f"chart_{stock_id}"
         fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
         axes[0].set_title(f"STOCK: {stock_id} ({title_text})", fontsize=14, color='black')
-        
-        # 🌟 直接存成實體檔案（例如 chart_2330.png）
         fig.savefig(f"{image_key}.png", format='png', bbox_inches='tight', dpi=100, facecolor='white')
         plt.close('all')
 
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
-        # 🌟 核心防禦 2：按鈕內發送的 text 必須絕對乾淨，長度嚴格縮短，避開 LINE 400
+        # 🌟 核心防禦 2：內嵌完整功能按鈕的 Flex 訊息
         flex_contents = {
             "type": "bubble",
             "body": {
@@ -146,7 +150,13 @@ def get_chart():
             }
         }
         
-        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+        # 🌟 在整段邏輯的最後穿上完美的 line_message 外殼並回傳
+        line_flex_message = {
+            "type": "flex",
+            "altText": f"{stock_name} ({stock_id}) K線圖查詢結果",
+            "contents": flex_contents
+        }
+        return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
     except Exception as e:
         print(f"💥 K線主控系統崩潰：{str(e)}")
@@ -162,7 +172,6 @@ def get_holders():
         req_data = request.get_json() or {}
         raw_id = req_data.get('stock_id', '').strip()
         
-        # 🌟 強力清洗
         stock_id = re.sub(r'[^0-9]', '', raw_id.replace("持股", ""))[:10]
         stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
 
@@ -174,7 +183,12 @@ def get_holders():
         
         if resp.get("status") != 200 or not resp.get("data") or len(resp["data"]) == 0:
             flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ 暫無 {stock_name}({stock_id}) 的大股東籌碼資料，請稍後再試。"}]}}
-            return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+            line_flex_message = {
+                "type": "flex",
+                "altText": f"{stock_name} ({stock_id}) 大股東籌碼查詢結果",
+                "contents": flex_contents
+            }
+            return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
         df = pd.DataFrame(resp["data"])
         df_1000 = df[df["shareholding_class"] == "1000以上"].copy()
@@ -185,7 +199,12 @@ def get_holders():
                 df_1000 = df[df["shareholding_class"] == classes[-1]].copy()
             else:
                 flex_contents = {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": f"⚠️ {stock_name} 的大股東資料格式不符。"}]}}
-                return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+                line_flex_message = {
+                    "type": "flex",
+                    "altText": f"{stock_name} ({stock_id}) 大股東籌碼查詢結果",
+                    "contents": flex_contents
+                }
+                return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
         df_1000 = df_1000.sort_values("date", ascending=False)
         if len(df_1000) > 1:
@@ -260,7 +279,12 @@ def get_holders():
             }
         }
         
-        return jsonify({"status": "success", "flex_contents": flex_contents}), 200
+        line_flex_message = {
+            "type": "flex",
+            "altText": f"{stock_name} ({stock_id}) 大股東籌碼查詢結果",
+            "contents": flex_contents
+        }
+        return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
     except Exception as e:
         print(f"💥 籌碼系統發生錯誤：{str(e)}")
