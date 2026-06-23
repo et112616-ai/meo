@@ -88,122 +88,143 @@ def get_chart():
         df = ticker.history(period=period, interval=interval)
         
         if df.empty or len(df) < 2:
-            body_contents = [{"type": "text", "text": f"{stock_name} 查無足個 K 線資料。"}]
-        else:
-            latest_close = df['Close'].iloc[-1]
-            prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
-            change = latest_close - prev_close
-            change_percent = (change / prev_close) * 100
-            
-            price_string = f"{latest_close:,.2f}"
-            change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
-            color_theme = "#ff0000" if change >= 0 else "#008000"
+            return jsonify({
+                "replyToken": reply_token,
+                "messages": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]
+            }), 200
 
-            # 確保生成獨立的圖片名稱
-            image_key = f"chart_{stock_id}"
-            font_config = {'fontname': CHINESE_FONT_NAME} if CHINESE_FONT_NAME else {}
-            fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
-            axes[0].set_title(f"{stock_name} ({stock_id}) - {title_text}", fontsize=16, color='black', weight='bold', **font_config)
-            
-            fig.savefig(f"{image_key}.png", format='png', bbox_inches='tight', dpi=100, facecolor='white')
-            plt.close('all')
+        latest_close = df['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
+        change = latest_close - prev_close
+        change_percent = (change / prev_close) * 100
+        
+        price_string = f"{latest_close:,.2f}"
+        change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
+        color_theme = "#ff0000" if change >= 0 else "#008000"
 
-            base_url = "https://meo-qput.onrender.com"
-            final_image_url = f"{base_url}/images/{image_key}.png"
+        image_key = f"chart_{stock_id}"
+        font_config = {'fontname': CHINESE_FONT_NAME} if CHINESE_FONT_NAME else {}
+        fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
+        axes[0].set_title(f"{stock_name} ({stock_id}) - {title_text}", fontsize=16, color='black', weight='bold', **font_config)
+        
+        fig.savefig(f"{image_key}.png", format='png', bbox_inches='tight', dpi=100, facecolor='white')
+        plt.close('all')
 
-            # 🌟 嚴格遵守 LINE 官方標準扁平化結構（四排需求完全滿足）
-            body_contents = [
-                # 第一排：股票抬頭 + 期貨按鈕
-                {
-                    "type": "box", "layout": "horizontal", "alignment": "center",
+        base_url = "https://meo-qput.onrender.com"
+        final_image_url = f"{base_url}/images/{image_key}.png"
+
+        # -------------------------------------------------------------
+        # 📦 訊息 1：純圖卡泡泡 (messages[0]) -> 絕對安全的純淨結構
+        # -------------------------------------------------------------
+        chart_bubble = {
+            "type": "flex",
+            "altText": f"{stock_name} ({stock_id}) K線圖",
+            "contents": {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "sm",
                     "contents": [
-                        {"type": "text", "text": f"{stock_name} ({stock_id})", "weight": "bold", "size": "xl", "flex": 3, "gravity": "center"},
-                        {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
-                    ]
-                },
-                {"type": "separator", "margin": "md"},
-                # 圖片與價格區
-                {
-                    "type": "box", "layout": "vertical", "margin": "md",
-                    "contents": [
-                        {"type": "image", "url": final_image_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
                         {
-                            "type": "box", "layout": "horizontal", "margin": "md",
+                            "type": "box", "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": f"📊 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
+                                {"type": "text", "text": title_text, "size": "sm", "color": "#888888", "align": "end", "gravity": "bottom"}
+                            ]
+                        },
+                        {"type": "separator", "margin": "xs"},
+                        {"type": "image", "url": final_image_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13", "margin": "sm"},
+                        {
+                            "type": "box", "layout": "horizontal", "margin": "sm",
                             "contents": [
                                 {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
                                 {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
                             ]
                         }
                     ]
-                },
-                {"type": "separator", "margin": "md"},
-                # 第二排：分時切換按鈕
-                {
-                    "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
+                }
+            }
+        }
+
+        # -------------------------------------------------------------
+        # 📦 訊息 2：純按鈕鍵盤泡泡 (messages[1]) -> 精準的四排按鈕佈局
+        # -------------------------------------------------------------
+        buttons_bubble = {
+            "type": "flex",
+            "altText": f"{stock_name} 功能選單",
+            "contents": {
+                "type": "bubble",
+                "size": "md",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "xs",
                     "contents": [
-                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
-                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
-                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
-                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}}
-                    ]
-                },
-                # 第三排：日週月切換按鈕
-                {
-                    "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
-                    "contents": [
-                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "日", "text": f"K線 {stock_id} daily"}},
-                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週", "text": f"K線 {stock_id} weekly"}},
-                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
-                    ]
-                },
-                {"type": "separator", "margin": "md"},
-                # 第四排 A：大功能鈕
-                {
-                    "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
-                    "contents": [
-                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
-                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
-                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
-                    ]
-                },
-                # 第四排 B：大功能鈕
-                {
-                    "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
-                    "contents": [
-                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
-                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+                        # 第一排：期貨大鈕
+                        {
+                            "type": "box", "layout": "horizontal",
+                            "contents": [
+                                {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "message", "label": f"➔ 查詢 {stock_name} 期貨", "text": f"期貨 {stock_id}"}}
+                            ]
+                        },
+                        {"type": "separator", "margin": "xs"},
+                        # 第二排：分時切換
+                        {
+                            "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
+                            "contents": [
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}}
+                            ]
+                        },
+                        # 第三排：日週月切換
+                        {
+                            "type": "box", "layout": "horizontal", "spacing": "xs",
+                            "contents": [
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "日線", "text": f"K線 {stock_id} daily"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週線", "text": f"K線 {stock_id} weekly"}},
+                                {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月線", "text": f"K線 {stock_id} monthly"}}
+                            ]
+                        },
+                        {"type": "separator", "margin": "xs"},
+                        # 第四排 A段：核心功能
+                        {
+                            "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
+                            "contents": [
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
+                            ]
+                        },
+                        # 第四排 B段：進階功能
+                        {
+                            "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
+                            "contents": [
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                                {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+                            ]
+                        }
                     ]
                 }
-            ]
+            }
+        }
 
+        # 🚀 同時發送圖卡與選單，完美通車！
         line_payload = {
             "replyToken": reply_token,
-            "messages": [
-                {
-                    "type": "flex",
-                    "altText": f"{stock_name} ({stock_id}) K線圖查詢結果",
-                    "contents": {
-                        "type": "bubble",
-                        "body": {
-                            "type": "box",
-                            "layout": "vertical",
-                            "spacing": "none",
-                            "contents": body_contents
-                        }
-                    }
-                }
-            ]
+            "messages": [chart_bubble, buttons_bubble]
         }
         return jsonify(line_payload), 200
 
     except Exception as e:
-        print(f"💥 系統崩潰：{str(e)}")
+        print(f"💥 K線圖生成失敗：{str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
-    # 籌碼中心邏輯維持先前優化版，請保留你原有的完整語法
-    pass 
+    pass # 請保留你原有的 get_holders 完整語法
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
