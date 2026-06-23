@@ -63,7 +63,7 @@ def serve_image(image_key):
     return "Image not found", 404
 
 # -------------------------------------------------------------------------
-# 📈 路由 1：【K線圖主控中心】(按鈕文字極簡優化版)
+# 📈 路由 1：【K線圖主控中心】(純文字 Action，徹底解決破版)
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -93,7 +93,8 @@ def get_chart():
         if df.empty or len(df) < 2:
             return jsonify({
                 "replyToken": reply_token,
-                "messages": [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]
+                "is_text": True,
+                "text": f"{stock_name} 查無足夠 K 線資料。"
             }), 200
 
         latest_close = df['Close'].iloc[-1]
@@ -116,79 +117,77 @@ def get_chart():
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
-        line_payload = {
-            "replyToken": reply_token,
-            "messages": [
-                {
-                    "type": "flex",
-                    "altText": f"{stock_name} ({stock_id}) K線圖查詢結果",
-                    "contents": {
-                        "type": "bubble",
-                        "body": {
-                            "type": "box",
-                            "layout": "vertical",
-                            "spacing": "md",
-                            "contents": [
-                                {
-                                    "type": "box", "layout": "horizontal",
-                                    "contents": [
-                                        {"type": "text", "text": f"📈 {stock_name} ({stock_id})", "weight": "bold", "size": "md"},
-                                        {"type": "text", "text": title_text, "size": "xs", "color": "#888888", "align": "end", "gravity": "bottom"}
-                                    ]
-                                },
-                                # 🌟 上排按鈕極簡扁平化：改為 1、3、5、d、w、m
-                                {
-                                    "type": "box", "layout": "horizontal", "spacing": "none",
-                                    "contents": [
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1", "text": f"K線 {stock_id} 1m"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3", "text": f"K線 {stock_id} 3m"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5", "text": f"K線 {stock_id} 5m"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "d", "text": f"K線 {stock_id} daily"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "w", "text": f"K線 {stock_id} weekly"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "m", "text": f"K線 {stock_id} monthly"}}
-                                    ]
-                                },
-                                {"type": "separator"},
-                                {
-                                    "type": "image", "url": final_image_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"
-                                },
-                                {
-                                    "type": "box", "layout": "horizontal",
-                                    "contents": [
-                                        {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
-                                        {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
-                                    ]
-                                }
-                            ]
-                        },
-                        "footer": {
-                            "type": "box",
-                            "layout": "vertical",
-                            "spacing": "xs",
-                            "contents": [
-                                {
-                                    "type": "box", "layout": "horizontal", "spacing": "xs",
-                                    "contents": [
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
-                                    ]
-                                },
-                                {
-                                    "type": "box", "layout": "horizontal", "spacing": "xs",
-                                    "contents": [
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}},
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
-                                        {"type": "button", "height": "sm", "style": "secondary", "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
-                                    ]
-                                }
-                            ]
-                        }
+        # 🌟 重新建構：直接傳回 Bubble 內容本身
+        bubble_payload = {
+            "type": "bubble",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "box", "layout": "horizontal",
+                        "contents": [
+                            {"type": "text", "text": f"📈 {stock_name} ({stock_id})", "weight": "bold", "size": "md"},
+                            {"type": "text", "text": title_text, "size": "xs", "color": "#888888", "align": "end", "gravity": "bottom"}
+                        ]
+                    },
+                    # 🌟 用 text 搭配 action，保留超高質感，絕不破版縮水
+                    {
+                        "type": "box", "layout": "horizontal", "justifyContent": "space-between", "padding": "xs",
+                        "contents": [
+                            {"type": "text", "text": "1分", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
+                            {"type": "text", "text": "3分", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
+                            {"type": "text", "text": "5分", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
+                            {"type": "text", "text": "日K", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "日K", "text": f"K線 {stock_id} daily"}},
+                            {"type": "text", "text": "週K", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "週K", "text": f"K線 {stock_id} weekly"}},
+                            {"type": "text", "text": "月K", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "月K", "text": f"K線 {stock_id} monthly"}}
+                        ]
+                    },
+                    {"type": "separator"},
+                    {
+                        "type": "image", "url": final_image_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"
+                    },
+                    {
+                        "type": "box", "layout": "horizontal",
+                        "contents": [
+                            {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
+                            {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
+                        ]
                     }
-                }
-            ]
+                ]
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "xs",
+                "contents": [
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
+                        ]
+                    },
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "secondary", "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
+                        ]
+                    }
+                ]
+            }
         }
-        return jsonify(line_payload), 200
+
+        return jsonify({
+            "replyToken": reply_token,
+            "is_text": False,
+            "altText": f"{stock_name} ({stock_id}) K線圖查詢結果",
+            "bubble": bubble_payload
+        }), 200
 
     except Exception as e:
         print(f"💥 K線圖生成失敗：{str(e)}")
@@ -278,48 +277,46 @@ def get_holders():
                 "contents": [{"type": "text", "text": "⚠️ 暫無大股東歷史籌碼資料", "align": "center", "color": "#ff0000"}]
             })
 
-        line_payload = {
-            "replyToken": reply_token,
-            "messages": [
-                {
-                    "type": "flex",
-                    "altText": f"{stock_name} ({stock_id}) 大股東持股歷史變動",
-                    "contents": {
-                        "type": "bubble",
-                        "body": {
-                            "type": "box",
-                            "layout": "vertical",
-                            "spacing": "xs",
-                            "contents": body_contents
-                        },
-                        "footer": {
-                            "type": "box",
-                            "layout": "vertical",
-                            "spacing": "xs",
-                            "contents": [
-                                {
-                                    "type": "box", "layout": "horizontal", "spacing": "xs",
-                                    "contents": [
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
-                                    ]
-                                },
-                                {
-                                    "type": "box", "layout": "horizontal", "spacing": "xs",
-                                    "contents": [
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}},
-                                        {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
-                                        {"type": "button", "height": "sm", "style": "secondary", "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
-                                    ]
-                                }
-                            ]
-                        }
+        # 🌟 同步改為直接回傳 bubble 核心內容
+        bubble_payload = {
+            "type": "bubble",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "xs",
+                "contents": body_contents
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "xs",
+                "contents": [
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
+                        ]
+                    },
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "secondary", "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
+                        ]
                     }
-                }
-            ]
+                ]
+            }
         }
-        return jsonify(line_payload), 200
+
+        return jsonify({
+            "replyToken": reply_token,
+            "is_text": False,
+            "altText": f"{stock_name} ({stock_id}) 大股東持股歷史變動",
+            "bubble": bubble_payload
+        }), 200
 
     except Exception as e:
         print(f"💥 籌碼系統發生錯誤：{str(e)}")
