@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
 from flask import Flask, request, jsonify
-from imgurpython import ImgurClient
+import requests
 
 # 初始化 Flask
 app = Flask(__name__)
@@ -19,11 +19,6 @@ logging.basicConfig(level=logging.INFO)
 
 # 初始化 Imgur 客户端
 IMGUR_CLIENT_ID = os.environ.get("IMGUR_CLIENT_ID", "a1b2c3d4e5f6g7h")
-try:
-    imgur_client = ImgurClient(IMGUR_CLIENT_ID)
-except Exception as e:
-    logging.error(f"Imgur Client 初始化失敗: {e}")
-    imgur_client = None
 
 # 固定股票對應表防呆
 STOCK_NAME_MAP = {
@@ -77,15 +72,28 @@ def draw_kline(df, stock_title):
     plt.savefig(img_path)
     plt.close()
     
-    if imgur_client:
-        try:
-            res = imgur_client.upload_from_path(img_path)
+# 🚀 原生不求人：直接用 requests POST 到 Imgur API
+    try:
+        url = "https://api.imgur.com/3/image"
+        headers = {"Authorization": f"Client-ID {IMGUR_CLIENT_ID}"}
+        with open(img_path, "rb") as image_file:
+            payload = {"image": image_file.read()}
+            response = requests.post(url, headers=headers, files=payload)
+        
+        # 刪除本地暫存圖
+        if os.path.exists(img_path):
             os.remove(img_path)
-            return res.get('link')
-        except Exception as e:
-            logging.error(f"Imgur 上傳失敗: {e}")
-            if os.path.exists(img_path):
-                os.remove(img_path)
+            
+        if response.status_code == 200:
+            res_json = response.json()
+            return res_json.get("data", {}).get("link")
+        else:
+            logging.error(f"Imgur API 報錯: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        logging.error(f"Imgur 原生上傳發生異常: {e}")
+        if os.path.exists(img_path):
+            os.remove(img_path)
     return None
 
 @app.route('/get_chart', methods=['POST'])
