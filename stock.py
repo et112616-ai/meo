@@ -167,7 +167,7 @@ def get_chart():
         }
         
         # 🌟 在整段邏輯的最後穿上完美的 line_message 外殼並回傳
-        line_flex_message = {
+line_flex_message = {
             "type": "flex",
             "altText": f"{stock_name} ({stock_id}) K線圖查詢結果",
             "contents": flex_contents
@@ -302,10 +302,10 @@ def get_holders():
             }
         }
         
-        line_flex_message = {
+line_flex_message = {
             "type": "flex",
             "altText": f"{stock_name} ({stock_id}) 大股東籌碼查詢結果",
-            "contents": flex_contents
+            "contents": flex_contents  # 這裡就是那個 type: bubble 的大括號 Box
         }
         return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
