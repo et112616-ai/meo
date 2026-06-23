@@ -49,27 +49,73 @@ def get_stock_info(raw_id):
     return stock_id, ticker
 
 def draw_kline(df, stock_title):
-    """繪製 K 線圖並利用原生 requests 上傳至 Imgur"""
+    """繪製帶有均線與成交量優化的精美 K 線圖，並原生 requests 上傳至 Imgur"""
     if df.empty:
         return None
         
-    df = df.copy()
-    df['Date_Num'] = mdates.date2num(df.index)
-    
-    fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
-    ohlc = df[['Date_Num', 'Open', 'High', 'Low', 'Close']].values
-    candlestick_ohlc(ax, ohlc, width=0.6, colorup='red', colordown='green', alpha=0.8)
-    
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-    ax.xaxis.set_major_locator(mdates.MaxNLocator(10))
-    plt.xticks(rotation=30)
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.title(f"{stock_title} K-Line Chart", fontsize=14)
-    plt.tight_layout()
-    
-    img_path = f"temp_{int(datetime.now().timestamp())}.png"
-    plt.savefig(img_path)
-    plt.close()
+    try:
+        df = df.copy()
+        # 確保索引為 Datetime 格式
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+            
+        df['Date_Num'] = mdates.date2num(df.index)
+        
+        # 計算簡單移動平均線 (MA5, MA20) 防禦型計算
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        
+        # 建立雙子圖 (上方K線與均線，下方成交量)
+        fig = plt.figure(figsize=(10, 7), dpi=100)
+        grid = plt.GridSpec(4, 1, hspace=0.3)
+        ax1 = fig.add_subplot(grid[0:3, 0])
+        ax2 = fig.add_subplot(grid[3, 0], sharex=ax1)
+        
+        # 轉換成 candlestick 要求的數組結構，並確保為 float 型態
+        ohlc = []
+        for idx, row in df.iterrows():
+            ohlc.append([
+                row['Date_Num'],
+                float(row['Open']),
+                float(row['High']),
+                float(row['Low']),
+                float(row['Close'])
+            ])
+            
+        # 繪製 K 線
+        candlestick_ohlc(ax1, ohlc, width=0.6, colorup='red', colordown='green', alpha=0.9)
+        
+        # 繪製均線
+        if not df['MA5'].isna().all():
+            ax1.plot(df['Date_Num'], df['MA5'], label='MA5', color='blue', linewidth=1)
+        if not df['MA20'].isna().all():
+            ax1.plot(df['Date_Num'], df['MA20'], label='MA20', color='orange', linewidth=1)
+        ax1.legend(loc='upper left')
+        ax1.grid(True, linestyle='--', alpha=0.5)
+        ax1.set_title(f"{stock_title} K-Line Chart", fontsize=14, weight='bold')
+        
+        # 繪製成交量
+        colors = ['red' if float(c) >= float(o) else 'green' for o, c in zip(df['Open'], df['Close'])]
+        ax2.bar(df['Date_Num'], df['Volume'], width=0.6, color=colors, alpha=0.7)
+        ax2.grid(True, linestyle='--', alpha=0.5)
+        
+        # 格式化 X 軸日期
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+        ax1.xaxis.set_major_locator(mdates.MaxNLocator(10))
+        plt.setp(ax1.get_xticklabels(), visible=False) # 隱藏上圖 X 軸標籤
+        
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+        ax2.xaxis.set_major_locator(mdates.MaxNLocator(10))
+        plt.xticks(rotation=30)
+        
+        plt.tight_layout()
+        
+        img_path = f"temp_{int(datetime.now().timestamp())}.png"
+        plt.savefig(img_path, bbox_inches='tight')
+        plt.close()
+    except Exception as drawing_error:
+        logging.error(f"Matplotlib 繪圖細節出錯: {drawing_error}")
+        return None
     
     # 原生 requests POST 到 Imgur API
     try:
@@ -101,7 +147,6 @@ def get_chart():
     period_type = req_data.get('data', '1d').strip()
     reply_token = req_data.get('replyToken', '').strip()
     
-    # 預防找不到股票代號，也必須強制回傳格式相符的 bubble，不允許拋出純文字異常
     stock_id, ticker = get_stock_info(raw_id)
     if not stock_id:
         stock_id = "2330"
@@ -110,18 +155,32 @@ def get_chart():
     stock_name = STOCK_NAME_MAP.get(stock_id, stock_id)
     is_future_state = "future" in period_type
     
-    days_back = 180 if "1w" in period_type else 60
+    # 動態判定回推天數
+    if "5d" in period_type.lower():
+        days_back = 15
+    elif "1w" in period_type.lower():
+        days_back = 180
+    elif "1m" in period_type.lower():
+        days_back = 365
+    else:
+        days_back = 60
+        
     start_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
     
     try:
-        df = yf.download(ticker, start=start_date)
+        # 下載單層結構的 Ticker 資料
+        df = yf.download(ticker, start=start_date, group_by='ticker')
         if df.empty:
             raise ValueError("Yahoo Finance 核心資料為空")
             
+        # 處理多重欄位索引問題 (防止 yfinance 吐出多個 Ticker 巢狀欄位)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(-1)
+            
         img_url = draw_kline(df, f"{stock_name}({stock_id})")
         if not img_url:
-            # Imgur 上傳失敗的備用圖網址
-            img_url = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800"
+            # 觸發備用卡
+            raise ValueError("圖片生成或上傳失敗，切換至安全排版")
             
         latest_price = round(float(df['Close'].iloc[-1]), 2)
         alt_text = f"{stock_name} 雙態查詢結果"
@@ -141,6 +200,15 @@ def get_chart():
             "footer": {
                 "type": "box", "layout": "vertical", "spacing": "sm",
                 "contents": [
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "style": "primary" if period_type == "1d" else "secondary", "height": "sm", "action": {"type": "message", "label": "1D", "text": f"K線 {stock_id} 1d"}},
+                            {"type": "button", "style": "primary" if period_type == "5d" else "secondary", "height": "sm", "action": {"type": "message", "label": "5D", "text": f"K線 {stock_id} 5d"}},
+                            {"type": "button", "style": "primary" if period_type == "1w" else "secondary", "height": "sm", "action": {"type": "message", "label": "W", "text": f"K線 {stock_id} 1w"}},
+                            {"type": "button", "style": "primary" if period_type == "1m" else "secondary", "height": "sm", "action": {"type": "message", "label": "M", "text": f"K線 {stock_id} 1m"}}
+                        ]
+                    },
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
@@ -195,6 +263,15 @@ def get_chart():
             "footer": {
                 "type": "box", "layout": "vertical", "spacing": "sm",
                 "contents": [
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "contents": [
+                            {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "message", "label": "1D", "text": f"K線 {stock_id} 1d"}},
+                            {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "message", "label": "5D", "text": f"K線 {stock_id} 5d"}},
+                            {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "message", "label": "W", "text": f"K線 {stock_id} 1w"}},
+                            {"type": "button", "style": "secondary", "height": "sm", "action": {"type": "message", "label": "M", "text": f"K線 {stock_id} 1m"}}
+                        ]
+                    },
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
