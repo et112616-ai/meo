@@ -10,7 +10,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
-from flask import Flask, request, jsonify, render_init___ if 'render_init__' in dir() else None
+from flask import Flask, request, jsonify
 import imgur3
 
 # 初始化 Flask
