@@ -63,7 +63,7 @@ def serve_image(image_key):
     return "Image not found", 404
 
 # -------------------------------------------------------------------------
-# 📈 路由 1：【K線圖主控中心】
+# 📈 路由 1：【K線圖主控中心】(按鈕文字極簡優化版)
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -132,19 +132,20 @@ def get_chart():
                                 {
                                     "type": "box", "layout": "horizontal",
                                     "contents": [
-                                        {"type": "text", "text": f"📈 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
-                                        {"type": "text", "text": title_text, "size": "sm", "color": "#888888", "align": "end", "gravity": "bottom"}
+                                        {"type": "text", "text": f"📈 {stock_name} ({stock_id})", "weight": "bold", "size": "md"},
+                                        {"type": "text", "text": title_text, "size": "xs", "color": "#888888", "align": "end", "gravity": "bottom"}
                                     ]
                                 },
+                                # 🌟 上排按鈕極簡扁平化：改為 1、3、5、d、w、m
                                 {
-                                    "type": "box", "layout": "horizontal", "spacing": "xs",
+                                    "type": "box", "layout": "horizontal", "spacing": "none",
                                     "contents": [
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "日K", "text": f"K線 {stock_id} daily"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週", "text": f"K線 {stock_id} weekly"}},
-                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
+                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1", "text": f"K線 {stock_id} 1m"}},
+                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3", "text": f"K線 {stock_id} 3m"}},
+                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5", "text": f"K線 {stock_id} 5m"}},
+                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "d", "text": f"K線 {stock_id} daily"}},
+                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "w", "text": f"K線 {stock_id} weekly"}},
+                                        {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "m", "text": f"K線 {stock_id} monthly"}}
                                     ]
                                 },
                                 {"type": "separator"},
@@ -195,7 +196,7 @@ def get_chart():
 
 
 # -------------------------------------------------------------------------
-# 📊 路由 2：【千張大股東籌碼中心】(完全整合一體化漢唐風)
+# 📊 路由 2：【千張大股東籌碼中心】
 # -------------------------------------------------------------------------
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
@@ -215,8 +216,10 @@ def get_holders():
         params = {"dataset": "TaiwanStockShareholding", "data_id": stock_id, "token": fm_token}
         resp = requests.get(url, params=params).json()
         
-        has_data = False
-        table_rows = [
+        body_contents = [
+            {"type": "text", "text": f"📊 {stock_name} ({stock_id})籌碼中心", "weight": "bold", "size": "lg"},
+            {"type": "text", "text": "條件：持股大於 1000 張大股東變動趨勢", "size": "xs", "color": "#888888"},
+            {"type": "separator", "margin": "md"},
             {
                 "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "xs",
                 "contents": [
@@ -229,6 +232,7 @@ def get_holders():
             {"type": "separator"}
         ]
 
+        has_data = False
         if resp.get("status") == 200 and resp.get("data"):
             df = pd.DataFrame(resp["data"])
             df_1000 = df[df["shareholding_class"].astype(str).str.contains("1000|1,000")].copy()
@@ -257,7 +261,7 @@ def get_holders():
                         
                     count_str = f"{int(row.get('number_of_shareholders', 0)):,}人"
 
-                    table_rows.append({
+                    body_contents.append({
                         "type": "box", "layout": "horizontal", "padding": "xs",
                         "contents": [
                             {"type": "text", "text": date_str, "size": "xs", "align": "center"},
@@ -266,10 +270,10 @@ def get_holders():
                             {"type": "text", "text": count_str, "size": "xs", "align": "center"}
                         ]
                     })
-                    table_rows.append({"type": "separator", "color": "#eeeeee"})
+                    body_contents.append({"type": "separator", "color": "#eeeeee"})
 
         if not has_data:
-            table_rows.append({
+            body_contents.append({
                 "type": "box", "layout": "horizontal", "padding": "md",
                 "contents": [{"type": "text", "text": "⚠️ 暫無大股東歷史籌碼資料", "align": "center", "color": "#ff0000"}]
             })
@@ -285,12 +289,8 @@ def get_holders():
                         "body": {
                             "type": "box",
                             "layout": "vertical",
-                            "spacing": "sm",
-                            "contents": [
-                                {"type": "text", "text": f"📊 {stock_name} ({stock_id})籌碼中心", "weight": "bold", "size": "lg"},
-                                {"type": "text", "text": "條件：持股大於 1000 張大股東每週變動趨勢", "size": "xs", "color": "#888888", "margin": "xs"},
-                                {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows}
-                            ]
+                            "spacing": "xs",
+                            "contents": body_contents
                         },
                         "footer": {
                             "type": "box",
