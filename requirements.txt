@@ -7,5 +7,6 @@ yfinance>=0.2.38
 mplfinance>=0.12.10b0
 matplotlib>=3.8.0
 FinMind>=1.6.4
+imgurpython==1.9.3
 gunicorn
 twstock
