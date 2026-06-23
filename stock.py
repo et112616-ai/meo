@@ -178,8 +178,7 @@ def get_chart():
                 ]
             }
         }
-        
-return jsonify({"replyToken": reply_token, "is_text": False, "altText": alt_text, "bubble": json.dumps(bubble_payload, ensure_ascii=False)}), 200        
+        return jsonify({"replyToken": reply_token, "is_text": False, "altText": alt_text, "bubble": json.dumps(bubble_payload, ensure_ascii=False)}), 200        
     except Exception as e:
         logging.error(f"處理 K 線圖表失敗: {e}")
         return jsonify({"replyToken": reply_token, "is_text": True, "text": "後台繪圖運算發生異常，請稍後再試。"}), 200
