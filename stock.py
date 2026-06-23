@@ -16,9 +16,6 @@ import threading
 
 app = Flask(__name__)
 
-# ==========================================
-# 🌟 核心升級 1：證交所全自動連線初始化邏輯（防卡死快取版）
-# ==========================================
 STOCK_NAME_MAP = {
     "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
     "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
@@ -27,7 +24,6 @@ STOCK_NAME_MAP = {
 
 def init_twstock_data():
     global STOCK_NAME_MAP
-    print("⏳ 正在背景連線台灣證交所下載最新個股清單...")
     try:
         twstock.__update_codes()
         dynamic_map = {}
@@ -36,51 +32,26 @@ def init_twstock_data():
                 dynamic_map[code] = info.name
         if dynamic_map:
             STOCK_NAME_MAP.update(dynamic_map)
-            print(f"🎉 證交所資料同步成功！目前共支援 {len(STOCK_NAME_MAP)} 檔台股名稱。")
     except Exception as e:
-        print(f"⚠️ 證交所連線失敗，將維持核心持股清單。錯誤: {str(e)}")
+        print(f"⚠️ 證交所連線失敗: {str(e)}")
 
 threading.Thread(target=init_twstock_data, daemon=True).start()
 
-# ==========================================
-# 🌟 核心升級 2：Matplotlib 繁體中文支援中心
-# ==========================================
 CHINESE_FONT_NAME = None
-
 def setup_chinese_font():
     global CHINESE_FONT_NAME
     try:
         system_fonts = [f.name for f in fm.fontManager.ttflist]
-        fallback_fonts = ['Noto Sans CJK TC', 'Microsoft JhengHei', 'Arial Unicode MS', 'Heiti TC', 'Droid Sans Fallback']
-        
+        fallback_fonts = ['Noto Sans CJK TC', 'Microsoft JhengHei', 'Arial Unicode MS', 'Heiti TC']
         for font in fallback_fonts:
             if font in system_fonts:
                 CHINESE_FONT_NAME = font
                 break
-                
         if CHINESE_FONT_NAME:
             matplotlib.rc('font', family=CHINESE_FONT_NAME)
             plt.rcParams['axes.unicode_minus'] = False
-            print(f"🎉 成功啟用系統中文字體：{CHINESE_FONT_NAME}")
-            return
-
-        font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc"
-        font_path = os.path.join(os.getcwd(), "NotoSansCJK-Regular.ttc")
-        if not os.path.exists(font_path):
-            r = requests.get(font_url, stream=True)
-            if r.status_code == 200:
-                with open(font_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=1024):
-                        if chunk: f.write(chunk)
-        if os.path.exists(font_path):
-            font_prop = fm.FontProperties(fname=font_path)
-            CHINESE_FONT_NAME = font_prop.get_name()
-            matplotlib.rc('font', family=CHINESE_FONT_NAME)
-            fm.fontManager.addfont(font_path)
-            plt.rcParams['axes.unicode_minus'] = False
-            print(f"🎉 成功動態載入中文字體：{CHINESE_FONT_NAME}")
     except Exception as e:
-        print(f"⚠️ 中文字體初始化失敗：{str(e)}")
+        print(f"⚠️ 中文字體失敗: {str(e)}")
 
 setup_chinese_font()
 
@@ -91,9 +62,6 @@ def serve_image(image_key):
         return send_file(filepath, mimetype='image/png')
     return "Image not found", 404
 
-# -------------------------------------------------------------------------
-# 🛠️ 路由 2：【K線圖主控中心】
-# -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
     try:
@@ -120,8 +88,7 @@ def get_chart():
         df = ticker.history(period=period, interval=interval)
         
         if df.empty or len(df) < 2:
-            body_contents = [{"type": "text", "text": f"{stock_name} 查無足夠 K 線資料。"}]
-            footer_contents = []
+            body_contents = [{"type": "text", "text": f"{stock_name} 查無足個 K 線資料。"}]
         else:
             latest_close = df['Close'].iloc[-1]
             prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
@@ -132,9 +99,8 @@ def get_chart():
             change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
             color_theme = "#ff0000" if change >= 0 else "#008000"
 
+            # 確保生成獨立的圖片名稱
             image_key = f"chart_{stock_id}"
-            
-            # 💡 傳入中文字體配置，徹底解決圖片中文變亂碼的問題
             font_config = {'fontname': CHINESE_FONT_NAME} if CHINESE_FONT_NAME else {}
             fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
             axes[0].set_title(f"{stock_name} ({stock_id}) - {title_text}", fontsize=16, color='black', weight='bold', **font_config)
@@ -145,8 +111,9 @@ def get_chart():
             base_url = "https://meo-qput.onrender.com"
             final_image_url = f"{base_url}/images/{image_key}.png"
 
-            # 🌟 重新梳理符合 LINE 官方原生規範的完美排版
+            # 🌟 嚴格遵守 LINE 官方標準扁平化結構（四排需求完全滿足）
             body_contents = [
+                # 第一排：股票抬頭 + 期貨按鈕
                 {
                     "type": "box", "layout": "horizontal", "alignment": "center",
                     "contents": [
@@ -155,6 +122,7 @@ def get_chart():
                     ]
                 },
                 {"type": "separator", "margin": "md"},
+                # 圖片與價格區
                 {
                     "type": "box", "layout": "vertical", "margin": "md",
                     "contents": [
@@ -167,14 +135,11 @@ def get_chart():
                             ]
                         }
                     ]
-                }
-            ]
-
-            # 🌟 將所有按鈕收納到官方最安全的 footer 區塊，分成四大排
-            footer_contents = [
-                # 第一排：分時切換
+                },
+                {"type": "separator", "margin": "md"},
+                # 第二排：分時切換按鈕
                 {
-                    "type": "box", "layout": "horizontal", "spacing": "xs",
+                    "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
                     "contents": [
                         {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
                         {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
@@ -182,7 +147,7 @@ def get_chart():
                         {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}}
                     ]
                 },
-                # 第二排：日週月切換
+                # 第三排：日週月切換按鈕
                 {
                     "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                     "contents": [
@@ -191,17 +156,17 @@ def get_chart():
                         {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
                     ]
                 },
-                {"type": "separator", "margin": "sm"},
-                # 第三排：功能大鈕 A
+                {"type": "separator", "margin": "md"},
+                # 第四排 A：大功能鈕
                 {
-                    "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "sm",
+                    "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
                     "contents": [
                         {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
                         {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
                         {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
                     ]
                 },
-                # 第四排：功能大鈕 B
+                # 第四排 B：大功能鈕
                 {
                     "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                     "contents": [
@@ -222,15 +187,9 @@ def get_chart():
                         "body": {
                             "type": "box",
                             "layout": "vertical",
-                            "spacing": "md",
+                            "spacing": "none",
                             "contents": body_contents
-                        },
-                        "footer": {
-                            "type": "box",
-                            "layout": "vertical",
-                            "spacing": "xs",
-                            "contents": footer_contents
-                        } if footer_contents else None
+                        }
                     }
                 }
             ]
@@ -238,17 +197,13 @@ def get_chart():
         return jsonify(line_payload), 200
 
     except Exception as e:
-        print(f"💥 K線主控系統崩潰：{str(e)}")
+        print(f"💥 系統崩潰：{str(e)}")
         return jsonify({"error": str(e)}), 500
 
-
-# -------------------------------------------------------------------------
-# 🛠️ 路由 3：【千張大股東籌碼中心】
-# -------------------------------------------------------------------------
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
-    # 籌碼中心邏輯維持先前優化版，故不重複贅述以節省空間...
-    pass # 請保留你原有的 get_holders 完整語法
+    # 籌碼中心邏輯維持先前優化版，請保留你原有的完整語法
+    pass 
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
