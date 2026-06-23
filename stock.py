@@ -16,30 +16,36 @@ import twstock
 app = Flask(__name__)
 
 # ==========================================
-# 🌟 核心升級 1：證交所全自動連線初始化邏輯
+# 🌟 核心升級 1：證交所全自動連線初始化邏輯（防卡死快取版）
 # ==========================================
-print("⏳ 正在連線台灣證交所下載最新個股清單...")
-try:
-    # 強制 twstock 更新股票代碼清單
-    twstock.__update_codes()
-    
-    # 建立動態股票對照表（包含上市與上櫃）
-    STOCK_NAME_MAP = {}
-    for code, info in twstock.codes.items():
-        # 過濾掉權證、衍生商品，只留下純股票、ETF等主要標的
-        if info.type in ['股票', 'ETF', '台灣存託憑證(TDR)', '受益證券']:
-            STOCK_NAME_MAP[code] = info.name
-            
-    print(f"🎉 證交所資料同步成功！已自動載入 {len(STOCK_NAME_MAP)} 檔台股/ETF 繁體中文名稱。")
-except Exception as e:
-    print(f"⚠️ 證交所連線失敗，啟用預設內嵌核心持股名單。錯誤: {str(e)}")
-    # 備用核心持股清單（防止沒網路時專案崩潰）
-    STOCK_NAME_MAP = {
-        "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
-        "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
-        "4979": "華星光", "0052": "富邦科技", "009816": "凱基台灣TOP50"
-    }
+STOCK_NAME_MAP = {
+    "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
+    "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
+    "4979": "華星光", "0052": "富邦科技", "009816": "凱基台灣TOP50"
+}
 
+def init_twstock_data():
+    global STOCK_NAME_MAP
+    print("⏳ 正在背景連線台灣證交所下載最新個股清單...")
+    try:
+        # 強制 twstock 更新股票代碼清單
+        twstock.__update_codes()
+        
+        # 建立動態股票對照表（包含上市與上櫃）
+        dynamic_map = {}
+        for code, info in twstock.codes.items():
+            if info.type in ['股票', 'ETF', '台灣存託憑證(TDR)', '受益證券']:
+                dynamic_map[code] = info.name
+                
+        if dynamic_map:
+            STOCK_NAME_MAP.update(dynamic_map)
+            print(f"🎉 證交所資料同步成功！目前共支援 {len(STOCK_NAME_MAP)} 檔台股名稱。")
+    except Exception as e:
+        print(f"⚠️ 證交所連線失敗，將維持核心持股清單。錯誤: {str(e)}")
+
+# 💡 啟動時先用核心清單確保速度，並立刻在背景更新，完全不佔用 HTTP 請求時間
+import threading
+threading.Thread(target=init_twstock_data, daemon=True).start()
 # ==========================================
 # 🌟 核心升級 2：Matplotlib 繁體中文支援中心
 # ==========================================
