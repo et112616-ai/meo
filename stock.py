@@ -85,12 +85,16 @@ def get_chart():
         action_data = req_data.get('data', '').strip()
         reply_token = req_data.get('replyToken', '').strip()
 
-        # 🧠 智慧判斷：先嘗試抓純數字代碼
-        stock_id = re.sub(r'[^0-9]', '', raw_id.replace("K線", "").replace("即時", "").replace("期貨", "").replace("現貨", ""))[:10]
+        # 🧠 鐵壁防呆判斷：先看是不是純數字
+        digits_only = re.sub(r'[^0-9]', '', raw_id)
         
-        # 🌟 核心升級點：若抓不到數字，代表使用者打的是純中文！啟動反向模糊查找
-        if not stock_id:
-            clean_name = raw_id.replace("K線", "").replace("即時", "").replace("期貨", "").replace("現貨", "").strip()
+        if digits_only:
+            # 1. 只要有抓到數字，它就是絕對的股票代號！
+            stock_id = digits_only[:10]
+        else:
+            # 2. 完全沒有數字，才代表使用者輸入的是純中文（如：漢唐、台積電）
+            stock_id = None
+            clean_name = raw_id.replace("K線", "").replace("即時", "").replace("期貨", "").replace("現貨", "").replace("法人", "").replace("持股", "").replace("融資券", "").strip()
             for code, name in STOCK_NAME_MAP.items():
                 if clean_name in name or name in clean_name:
                     stock_id = code
@@ -249,9 +253,16 @@ def get_legal_deal():
         raw_id = req_data.get('stock_id', '').strip()
         reply_token = req_data.get('replyToken', '').strip()
         
-        stock_id = re.sub(r'[^0-9]', '', raw_id.replace("法人", ""))[:10]
-        if not stock_id:
-            clean_name = raw_id.replace("法人", "").replace("spot", "").strip()
+        # 🧠 鐵壁防呆判斷：先看是不是純數字
+        digits_only = re.sub(r'[^0-9]', '', raw_id)
+        
+        if digits_only:
+            # 1. 只要有抓到數字，它就是絕對的股票代號！
+            stock_id = digits_only[:10]
+        else:
+            # 2. 完全沒有數字，才代表使用者輸入的是純中文（如：漢唐、台積電）
+            stock_id = None
+            clean_name = raw_id.replace("K線", "").replace("即時", "").replace("期貨", "").replace("現貨", "").replace("法人", "").replace("持股", "").replace("融資券", "").strip()
             for code, name in STOCK_NAME_MAP.items():
                 if clean_name in name or name in clean_name:
                     stock_id = code
@@ -369,9 +380,16 @@ def get_holders():
         raw_id = req_data.get('stock_id', '').strip()
         reply_token = req_data.get('replyToken', '').strip()
         
-        stock_id = re.sub(r'[^0-9]', '', raw_id.replace("持股", ""))[:10]
-        if not stock_id:
-            clean_name = raw_id.replace("持股", "").replace("spot", "").strip()
+        # 🧠 鐵壁防呆判斷：先看是不是純數字
+        digits_only = re.sub(r'[^0-9]', '', raw_id)
+        
+        if digits_only:
+            # 1. 只要有抓到數字，它就是絕對的股票代號！
+            stock_id = digits_only[:10]
+        else:
+            # 2. 完全沒有數字，才代表使用者輸入的是純中文（如：漢唐、台積電）
+            stock_id = None
+            clean_name = raw_id.replace("K線", "").replace("即時", "").replace("期貨", "").replace("現貨", "").replace("法人", "").replace("持股", "").replace("融資券", "").strip()
             for code, name in STOCK_NAME_MAP.items():
                 if clean_name in name or name in clean_name:
                     stock_id = code
@@ -478,9 +496,16 @@ def get_margin():
         raw_id = req_data.get('stock_id', '').strip()
         reply_token = req_data.get('replyToken', '').strip()
         
-        stock_id = re.sub(r'[^0-9]', '', raw_id.replace("融資券", ""))[:10]
-        if not stock_id:
-            clean_name = raw_id.replace("融資券", "").replace("spot", "").strip()
+        # 🧠 鐵壁防呆判斷：先看是不是純數字
+        digits_only = re.sub(r'[^0-9]', '', raw_id)
+        
+        if digits_only:
+            # 1. 只要有抓到數字，它就是絕對的股票代號！
+            stock_id = digits_only[:10]
+        else:
+            # 2. 完全沒有數字，才代表使用者輸入的是純中文（如：漢唐、台積電）
+            stock_id = None
+            clean_name = raw_id.replace("K線", "").replace("即時", "").replace("期貨", "").replace("現貨", "").replace("法人", "").replace("持股", "").replace("融資券", "").strip()
             for code, name in STOCK_NAME_MAP.items():
                 if clean_name in name or name in clean_name:
                     stock_id = code
