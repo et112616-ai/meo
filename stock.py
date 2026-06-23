@@ -212,30 +212,59 @@ def get_chart():
                     }
                 ]
             },
-            "footer": {
-                "type": "box", "layout": "vertical", "spacing": "xs",
+           "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
                 "contents": [
                     {
-                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "xs",
                         "contents": [
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id} {state_suffix}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily {state_suffix}"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id} spot"}}
+                            {
+                                "type": "button",
+                                "style": "primary",
+                                "height": "sm",
+                                "action": {
+                                    "type": "message",
+                                    "label": "即時",
+                                    "text": f"即時 {stock_id} spot"
+                                }
+                            },
+                            {
+                                "type": "button",
+                                "style": "secondary",
+                                "height": "sm",
+                                "action": {
+                                    "type": "message",
+                                    "label": "K線",
+                                    "text": f"K線 {stock_id} 1d"
+                                }
+                            }
                         ]
                     },
                     {
-                        "type": "box", "layout": "horizontal", "spacing": "xs",
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "xs",
                         "contents": [
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id} spot"}},
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id} spot"}},
-                            {"type": "button", "height": "sm", "style": "secondary" if is_future_state else "primary", 
-                             "action": {"type": "message", "label": "期現貨" if is_future_state else "期貨", "text": f"K線 {stock_id} daily spot" if is_future_state else f"K線 {stock_id} daily future"}}
+                            {
+                                "type": "button", 
+                                "height": "sm", 
+                                "style": "secondary" if is_future_state else "primary", 
+                                "action": {
+                                    "type": "message", 
+                                    "label": "期現貨" if is_future_state else "期貨", 
+                                    "text": f"K線 {stock_id} daily spot" if is_future_state else f"K線 {stock_id} daily future"
+                                }
+                            }
                         ]
                     }
                 ]
             }
-        }
-
         return jsonify({"replyToken": reply_token, "is_text": False, "altText": f"{stock_name} 雙態查詢結果", "bubble": bubble_payload}), 200
 
     except Exception as e:
