@@ -10,25 +10,93 @@ import mplfinance as mpf
 import matplotlib
 matplotlib.use('Agg')  
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import twstock
 
 app = Flask(__name__)
 
-STOCK_NAME_MAP = {
-    "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
-    "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
-    "4979": "華星光", "0052": "富邦科技", "009816": "凱基台灣TOP50"
-}
+# ==========================================
+# 🌟 核心升級 1：證交所全自動連線初始化邏輯
+# ==========================================
+print("⏳ 正在連線台灣證交所下載最新個股清單...")
+try:
+    # 強制 twstock 更新股票代碼清單
+    twstock.__update_codes()
+    
+    # 建立動態股票對照表（包含上市與上櫃）
+    STOCK_NAME_MAP = {}
+    for code, info in twstock.codes.items():
+        # 過濾掉權證、衍生商品，只留下純股票、ETF等主要標的
+        if info.type in ['股票', 'ETF', '台灣存託憑證(TDR)', '受益證券']:
+            STOCK_NAME_MAP[code] = info.name
+            
+    print(f"🎉 證交所資料同步成功！已自動載入 {len(STOCK_NAME_MAP)} 檔台股/ETF 繁體中文名稱。")
+except Exception as e:
+    print(f"⚠️ 證交所連線失敗，啟用預設內嵌核心持股名單。錯誤: {str(e)}")
+    # 備用核心持股清單（防止沒網路時專案崩潰）
+    STOCK_NAME_MAP = {
+        "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
+        "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
+        "4979": "華星光", "0052": "富邦科技", "009816": "凱基台灣TOP50"
+    }
+
+# ==========================================
+# 🌟 核心升級 2：Matplotlib 繁體中文支援中心
+# ==========================================
+def setup_chinese_font():
+    try:
+        system_fonts = [f.name for f in fm.fontManager.ttflist]
+        fallback_fonts = ['Noto Sans CJK JP', 'Noto Sans CJK KR', 'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Droid Sans Fallback']
+        
+        chosen_font = None
+        for font in fallback_fonts:
+            if font in system_fonts:
+                chosen_font = font
+                break
+                
+        if chosen_font:
+            matplotlib.rc('font', family=chosen_font)
+            plt.rcParams['axes.unicode_minus'] = False
+            print(f"🎉 成功啟用系統中文字體：{chosen_font}")
+            return
+
+        font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK-Regular.ttc"
+        font_path = os.path.join(os.getcwd(), "NotoSansCJK-Regular.ttc")
+        
+        if not os.path.exists(font_path):
+            print("⏳ 雲端環境查無中文字體，正在線上下載思源黑體 (約需 5-10 秒)...")
+            r = requests.get(font_url, stream=True)
+            if r.status_code == 200:
+                with open(font_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=1024):
+                        if chunk: f.write(chunk)
+                print("✅ 字體下載完成！")
+            else:
+                print("❌ 字體下載失敗，將維持預設英文顯示。")
+                return
+
+        if os.path.exists(font_path):
+            font_prop = fm.FontProperties(fname=font_path)
+            matplotlib.rc('font', family=font_prop.get_name())
+            fm.fontManager.addfont(font_path)
+            plt.rcParams['axes.unicode_minus'] = False
+            print(f"🎉 成功動態載入中文字體：{font_prop.get_name()}")
+            
+    except Exception as e:
+        print(f"⚠️ 中文字體初始化失敗：{str(e)}")
+
+setup_chinese_font()
+
 
 @app.route('/images/<image_key>.png', methods=['GET'])
 def serve_image(image_key):
-    # 🌟 直接讀取實體檔案，安全穩定，不怕休眠重啟
     filepath = f"{image_key}.png"
     if os.path.exists(filepath):
         return send_file(filepath, mimetype='image/png')
     return "Image not found", 404
 
 # -------------------------------------------------------------------------
-# 🛠️ 路由 2：【K線圖主控中心】回歸初心穩定版
+# 🛠️ 路由 2：【K線圖主控中心】
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -37,33 +105,32 @@ def get_chart():
         raw_id = req_data.get('stock_id', '').strip()
         action_data = req_data.get('data', '').strip()
 
-        # 🌟 核心防禦 1：徹底清洗代碼
         stock_id = re.sub(r'[^a-zA-Z0-9]', '', raw_id.replace("K線", "").replace("即時", ""))[:10]
         if not stock_id:
             return jsonify({"status": "error", "message": "Missing stock_id"}), 200
 
         if '1m' in action_data:
-            period, interval, title_text = '1d', '1m', '1 Min K-Line'
+            period, interval, title_text = '1d', '1m', '1分鐘K線'
         elif '3m' in action_data:
-            period, interval, title_text = '1d', '3m', '3 Min K-Line'
+            period, interval, title_text = '1d', '3m', '3分鐘K線'
         elif '5m' in action_data:
-            period, interval, title_text = '1d', '5m', '5 Min K-Line'
+            period, interval, title_text = '1d', '5m', '5分鐘K線'
         elif '30m' in action_data:
-            period, interval, title_text = '5d', '30m', '30 Min K-Line'
+            period, interval, title_text = '5d', '30m', '30分鐘K線'
         elif 'weekly' in action_data:
-            period, interval, title_text = '1y', '1wk', 'Weekly K-Line'
+            period, interval, title_text = '1y', '1wk', '週K線'
         elif 'monthly' in action_data:
-            period, interval, title_text = '5y', '1mo', 'Monthly K-Line'
+            period, interval, title_text = '5y', '1mo', '月K線'
         else:
-            period, interval, title_text = '3mo', '1d', 'Daily K-Line'
+            period, interval, title_text = '3mo', '1d', '日K線'
 
+        # 這裡會自動去動態字典裡抓名字，查不到則顯示個股代號
         stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
 
         yf_code = f"{stock_id}.TW"
         ticker = yf.Ticker(yf_code)
         df = ticker.history(period=period, interval=interval)
         
-        # 情況 A：無資料的防禦
         if df.empty or len(df) < 2:
             flex_contents = {
                 "type": "bubble", 
@@ -76,7 +143,6 @@ def get_chart():
             }
             return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
-        # 情況 B：資料正常，開始計算與畫圖
         latest_close = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
         change = latest_close - prev_close
@@ -86,17 +152,15 @@ def get_chart():
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000"
 
-        # 🌟 儲存實體圖表
         image_key = f"chart_{stock_id}"
         fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
-        axes[0].set_title(f"STOCK: {stock_id} ({title_text})", fontsize=14, color='black')
+        axes[0].set_title(f"{stock_name} ({stock_id}) - {title_text}", fontsize=16, color='black', weight='bold')
         fig.savefig(f"{image_key}.png", format='png', bbox_inches='tight', dpi=100, facecolor='white')
         plt.close('all')
 
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
-        # 🌟 核心防禦 2：內嵌完整功能按鈕的 Flex 訊息
         flex_contents = {
             "type": "bubble",
             "body": {
@@ -109,7 +173,6 @@ def get_chart():
                             {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
                         ]
                     },
-                    # 🌟 週期按鈕第一排（分鐘線：4個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
@@ -119,7 +182,6 @@ def get_chart():
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}}
                         ]
                     },
-                    # 🌟 週期按鈕第二排（日週月線：3個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                         "contents": [
@@ -142,10 +204,7 @@ def get_chart():
                             }
                         ]
                     },
-
-                    {
-                        "type": "separator"},
-                    # 🌟 第一排按鈕（3個）
+                    {"type": "separator"},
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
@@ -154,7 +213,6 @@ def get_chart():
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
                         ]
                     },
-                    # 🌟 第二排按鈕（2個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                         "contents": [
@@ -166,8 +224,7 @@ def get_chart():
             }
         }
         
-        # 🌟 在整段邏輯的最後穿上完美的 line_message 外殼並回傳
-line_flex_message = {
+        line_flex_message = {
             "type": "flex",
             "altText": f"{stock_name} ({stock_id}) K線圖查詢結果",
             "contents": flex_contents
@@ -180,7 +237,7 @@ line_flex_message = {
 
 
 # -------------------------------------------------------------------------
-# 🛠️ 路由 3：【千張大股東籌碼中心】回歸初心穩定版
+# 🛠️ 路由 3：【千張大股東籌碼中心】
 # -------------------------------------------------------------------------
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
@@ -281,7 +338,6 @@ def get_holders():
                     {"type": "text", "text": "條件：大股東張數大於1000張變動", "size": "xs", "color": "#888888", "margin": "xs"},
                     {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
                     {"type": "separator"},
-                                        # 🌟 第一排按鈕（3個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
@@ -290,7 +346,6 @@ def get_holders():
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
                         ]
                     },
-                    # 🌟 第二排按鈕（2個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                         "contents": [
@@ -298,14 +353,14 @@ def get_holders():
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
                         ]
                     }
-                    ]
+                ]
             }
         }
         
-line_flex_message = {
+        line_flex_message = {
             "type": "flex",
             "altText": f"{stock_name} ({stock_id}) 大股東籌碼查詢結果",
-            "contents": flex_contents  # 這裡就是那個 type: bubble 的大括號 Box
+            "contents": flex_contents
         }
         return jsonify({"status": "success", "line_message": line_flex_message}), 200
 
