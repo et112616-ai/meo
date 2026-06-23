@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
 from flask import Flask, request, jsonify
-import imgur3
+from imgurpython import ImgurClient
 
 # 初始化 Flask
 app = Flask(__name__)
@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 # 初始化 Imgur 客户端
 IMGUR_CLIENT_ID = os.environ.get("IMGUR_CLIENT_ID", "a1b2c3d4e5f6g7h")
 try:
-    imgur_client = imgur3.ImgurClient(IMGUR_CLIENT_ID)
+    imgur_client = ImgurClient(IMGUR_CLIENT_ID)
 except Exception as e:
     logging.error(f"Imgur Client 初始化失敗: {e}")
     imgur_client = None
