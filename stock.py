@@ -109,18 +109,25 @@ def get_chart():
                             {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "期貨", "text": f"期貨 {stock_id}"}}
                         ]
                     },
+                    # 🌟 週期按鈕第一排（分鐘線：4個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
-                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}},
+                            {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}}
+                        ]
+                    },
+                    # 🌟 週期按鈕第二排（日週月線：3個）
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
+                        "contents": [
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "日", "text": f"K線 {stock_id} daily"}},
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週", "text": f"K線 {stock_id} weekly"}},
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
                         ]
-                    },
+                    },,
                     {"type": "separator"},
                     {
                         "type": "box", "layout": "vertical",
