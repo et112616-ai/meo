@@ -135,13 +135,22 @@ def get_chart():
                             }
                         ]
                     },
-                    {"type": "separator"},
+
+                    {
+                        "type": "separator"},
+                    # 🌟 第一排按鈕（3個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
+                        ]
+                    },
+                    # 🌟 第二排按鈕（2個）
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
+                        "contents": [
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
                         ]
@@ -264,16 +273,25 @@ def get_holders():
                     {"type": "text", "text": f"📊 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
                     {"type": "text", "text": "條件：大股東張數大於1000張變動", "size": "xs", "color": "#888888", "margin": "xs"},
                     {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
-                    {"type": "separator", "margin": "lg"},
+                    {"type": "separator"},
+                    {{"type": "separator"},
+                    # 🌟 第一排按鈕（3個）
                     {
-                        "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "md",
+                        "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
-                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}},
+                            {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
+                        ]
+                    },
+                    # 🌟 第二排按鈕（2個）
+                    {
+                        "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
+                        "contents": [
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
                         ]
+                    }
                     }
                 ]
             }
