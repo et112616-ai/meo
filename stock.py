@@ -127,7 +127,7 @@ def get_chart():
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "週", "text": f"K線 {stock_id} weekly"}},
                             {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "月", "text": f"K線 {stock_id} monthly"}}
                         ]
-                    },,
+                    },
                     {"type": "separator"},
                     {
                         "type": "box", "layout": "vertical",
@@ -281,8 +281,7 @@ def get_holders():
                     {"type": "text", "text": "條件：大股東張數大於1000張變動", "size": "xs", "color": "#888888", "margin": "xs"},
                     {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
                     {"type": "separator"},
-                    {{"type": "separator"},
-                    # 🌟 第一排按鈕（3個）
+                                        # 🌟 第一排按鈕（3個）
                     {
                         "type": "box", "layout": "horizontal", "spacing": "xs",
                         "contents": [
@@ -299,8 +298,7 @@ def get_holders():
                             {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
                         ]
                     }
-                    }
-                ]
+                    ]
             }
         }
         
