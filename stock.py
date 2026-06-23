@@ -23,9 +23,10 @@ STOCK_NAME_MAP = {
 
 @app.route('/images/<image_key>.png', methods=['GET'])
 def serve_image(image_key):
-    img_bytes = IMAGE_CACHE.get(image_key)
-    if img_bytes:
-        return send_file(io.BytesIO(img_bytes), mimetype='image/png')
+    # 🌟 改成直接讀取實體檔案，最安全穩定
+    filepath = f"{image_key}.png"
+    if os.path.exists(filepath):
+        return send_file(filepath, mimetype='image/png')
     return "Image not found", 404
 
 # -------------------------------------------------------------------------
@@ -79,14 +80,13 @@ def get_chart():
         change_string = f"{'+' if change >= 0 else ''}{change:.2f} ({change_percent:.2f}%)"
         color_theme = "#ff0000" if change >= 0 else "#008000"
 
-        buf = io.BytesIO()
+        # ✅ 替換成以下「實體檔案儲存版」：
+        image_key = f"chart_{stock_id}"
         fig, axes = mpf.plot(df, type='candle', volume=True, returnfig=True, figsize=(10, 6), style='yahoo')
         axes[0].set_title(f"STOCK: {stock_id} ({title_text})", fontsize=14, color='black')
-        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100, facecolor='white')
         
-        image_key = f"chart_{stock_id}"
-        IMAGE_CACHE[image_key] = buf.getvalue()
-        buf.seek(0)
+        # 🌟 直接存成實體檔案（例如 chart_2330.png）
+        fig.savefig(f"{image_key}.png", format='png', bbox_inches='tight', dpi=100, facecolor='white')
         plt.close('all')
 
         base_url = "https://meo-qput.onrender.com"
