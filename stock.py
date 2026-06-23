@@ -192,14 +192,20 @@ def get_chart():
                     {"type": "separator", "margin": "xs"},
                     {"type": "image", "url": final_image_url, "size": "full", "aspectMode": "cover", "aspectRatio": "20:13"},
                     {"type": "separator", "margin": "xs"},
+                    # 🌟 修正點：將最新價、漲跌與資料時間，全部安全地包在同一個垂直 Box 容器內，確保 LINE 絕對不爆框、拒收
                     {
-                        "type": "box", "layout": "horizontal", "margin": "xs",
+                        "type": "box", "layout": "vertical", "margin": "xs", "spacing": "xs",
                         "contents": [
-                            {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
-                            {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
+                            {
+                                "type": "box", "layout": "horizontal",
+                                "contents": [
+                                    {"type": "text", "text": f"最新價: {price_string}", "weight": "bold", "size": "sm"},
+                                    {"type": "text", "text": f"漲跌: {change_string}", "weight": "bold", "size": "sm", "color": color_theme, "align": "end"}
+                                ]
+                            },
+                            {"type": "text", "text": f"資料時間：{time_str}", "size": "xs", "color": "#888888"}
                         ]
-                    },
-                    {"type": "text", "text": f"資料時間：{time_str}", "size": "xs", "color": "#888888", "margin": "xs"}
+                    }
                 ]
             },
             "footer": {
