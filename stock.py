@@ -63,7 +63,7 @@ def serve_image(image_key):
     return "Image not found", 404
 
 # -------------------------------------------------------------------------
-# 📈 路由 1：【K線圖主控中心】(純文字 Action，徹底解決破版)
+# 📈 路由 1：【K線圖主控中心】(修正 LINE 語法不合規問題)
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -117,7 +117,7 @@ def get_chart():
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
-        # 🌟 重新建構：直接傳回 Bubble 內容本身
+        # 🌟 移除不合規的 justifyContent，改用標準 horizontal layout + flex 均分
         bubble_payload = {
             "type": "bubble",
             "body": {
@@ -132,16 +132,15 @@ def get_chart():
                             {"type": "text", "text": title_text, "size": "xs", "color": "#888888", "align": "end", "gravity": "bottom"}
                         ]
                     },
-                    # 🌟 用 text 搭配 action，保留超高質感，絕不破版縮水
                     {
-                        "type": "box", "layout": "horizontal", "justifyContent": "space-between", "padding": "xs",
+                        "type": "box", "layout": "horizontal", "spacing": "none",
                         "contents": [
-                            {"type": "text", "text": "1分", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
-                            {"type": "text", "text": "3分", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
-                            {"type": "text", "text": "5分", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
-                            {"type": "text", "text": "日K", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "日K", "text": f"K線 {stock_id} daily"}},
-                            {"type": "text", "text": "週K", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "週K", "text": f"K線 {stock_id} weekly"}},
-                            {"type": "text", "text": "月K", "size": "sm", "color": "#0066cc", "align": "center", "action": {"type": "message", "label": "月K", "text": f"K線 {stock_id} monthly"}}
+                            {"type": "text", "text": "1分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
+                            {"type": "text", "text": "3分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
+                            {"type": "text", "text": "5分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
+                            {"type": "text", "text": "日K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "日K", "text": f"K線 {stock_id} daily"}},
+                            {"type": "text", "text": "週K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "週K", "text": f"K線 {stock_id} weekly"}},
+                            {"type": "text", "text": "月K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "月K", "text": f"K線 {stock_id} monthly"}}
                         ]
                     },
                     {"type": "separator"},
@@ -195,7 +194,7 @@ def get_chart():
 
 
 # -------------------------------------------------------------------------
-# 📊 路由 2：【千張大股東籌碼中心】
+# 📊 路由 2：【千張大股東籌碼中心】(補齊結構比例，確保 LINE 100% 接收)
 # -------------------------------------------------------------------------
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
@@ -219,13 +218,14 @@ def get_holders():
             {"type": "text", "text": f"📊 {stock_name} ({stock_id})籌碼中心", "weight": "bold", "size": "lg"},
             {"type": "text", "text": "條件：持股大於 1000 張大股東變動趨勢", "size": "xs", "color": "#888888"},
             {"type": "separator", "margin": "md"},
+            # 表格標頭：加入 flex 比例確保對齊
             {
-                "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "xs",
+                "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "sm",
                 "contents": [
-                    {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center"},
-                    {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center"},
-                    {"type": "text", "text": "增減", "weight": "bold", "size": "xs", "align": "center"},
-                    {"type": "text", "text": "人數", "weight": "bold", "size": "xs", "align": "center"}
+                    {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center", "flex": 2},
+                    {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center", "flex": 2},
+                    {"type": "text", "text": "增減", "weight": "bold", "size": "xs", "align": "center", "flex": 2},
+                    {"type": "text", "text": "人數", "weight": "bold", "size": "xs", "align": "center", "flex": 2}
                 ]
             },
             {"type": "separator"}
@@ -260,13 +260,14 @@ def get_holders():
                         
                     count_str = f"{int(row.get('number_of_shareholders', 0)):,}人"
 
+                    # 資料列：同樣補上對應的 flex 比例
                     body_contents.append({
-                        "type": "box", "layout": "horizontal", "padding": "xs",
+                        "type": "box", "layout": "horizontal", "padding": "sm",
                         "contents": [
-                            {"type": "text", "text": date_str, "size": "xs", "align": "center"},
-                            {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold"},
-                            {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold"},
-                            {"type": "text", "text": count_str, "size": "xs", "align": "center"}
+                            {"type": "text", "text": date_str, "size": "xs", "align": "center", "flex": 2},
+                            {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold", "flex": 2},
+                            {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold", "flex": 2},
+                            {"type": "text", "text": count_str, "size": "xs", "align": "center", "flex": 2}
                         ]
                     })
                     body_contents.append({"type": "separator", "color": "#eeeeee"})
@@ -274,10 +275,9 @@ def get_holders():
         if not has_data:
             body_contents.append({
                 "type": "box", "layout": "horizontal", "padding": "md",
-                "contents": [{"type": "text", "text": "⚠️ 暫無大股東歷史籌碼資料", "align": "center", "color": "#ff0000"}]
+                "contents": [{"type": "text", "text": "⚠️ 暫無大股東歷史籌碼資料", "align": "center", "color": "#ff0000", "flex": 1}]
             })
 
-        # 🌟 同步改為直接回傳 bubble 核心內容
         bubble_payload = {
             "type": "bubble",
             "body": {
