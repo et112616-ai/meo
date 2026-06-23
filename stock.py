@@ -16,6 +16,7 @@ import threading
 
 app = Flask(__name__)
 
+# 秉璋的專屬自選股清單與動態對應表
 STOCK_NAME_MAP = {
     "1101": "台泥", "2022": "聚亨", "2301": "光寶科", "2303": "聯電",
     "2313": "華通", "2330": "台積電", "2337": "旺宏", "2634": "漢翔",
@@ -63,7 +64,7 @@ def serve_image(image_key):
     return "Image not found", 404
 
 # -------------------------------------------------------------------------
-# 📈 路由 1：【K線圖主控中心】(修正 LINE 語法不合規問題)
+# 📈 路由 1：【K線圖主控中心】(完美平分、標準規格版)
 # -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
@@ -117,7 +118,6 @@ def get_chart():
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
-        # 🌟 移除不合規的 justifyContent，改用標準 horizontal layout + flex 均分
         bubble_payload = {
             "type": "bubble",
             "body": {
@@ -135,12 +135,12 @@ def get_chart():
                     {
                         "type": "box", "layout": "horizontal", "spacing": "none",
                         "contents": [
-                            {"type": "text", "text": "1分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "1分", "text": f"K線 {stock_id} 1m"}},
-                            {"type": "text", "text": "3分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "3分", "text": f"K線 {stock_id} 3m"}},
-                            {"type": "text", "text": "5分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "5分", "text": f"K線 {stock_id} 5m"}},
-                            {"type": "text", "text": "日K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "日K", "text": f"K線 {stock_id} daily"}},
-                            {"type": "text", "text": "週K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "週K", "text": f"K線 {stock_id} weekly"}},
-                            {"type": "text", "text": "月K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "label": "月K", "text": f"K線 {stock_id} monthly"}}
+                            {"type": "text", "text": "1分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "text": f"K線 {stock_id} 1m"}},
+                            {"type": "text", "text": "3分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "text": f"K線 {stock_id} 3m"}},
+                            {"type": "text", "text": "5分", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "text": f"K線 {stock_id} 5m"}},
+                            {"type": "text", "text": "日K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "text": f"K線 {stock_id} daily"}},
+                            {"type": "text", "text": "週K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "text": f"K線 {stock_id} weekly"}},
+                            {"type": "text", "text": "月K", "size": "sm", "color": "#0066cc", "align": "center", "flex": 1, "action": {"type": "message", "text": f"K線 {stock_id} monthly"}}
                         ]
                     },
                     {"type": "separator"},
@@ -194,7 +194,7 @@ def get_chart():
 
 
 # -------------------------------------------------------------------------
-# 📊 路由 2：【千張大股東籌碼中心】(補齊結構比例，確保 LINE 100% 接收)
+# 📊 路由 2：【千張大股東籌碼中心】(高質感選項 B - App 表格風)
 # -------------------------------------------------------------------------
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
@@ -214,21 +214,23 @@ def get_holders():
         params = {"dataset": "TaiwanStockShareholding", "data_id": stock_id, "token": fm_token}
         resp = requests.get(url, params=params).json()
         
+        # 建立外層框架（利用整體 spacing="sm" 控制行距，拿掉任何子層 padding）
         body_contents = [
-            {"type": "text", "text": f"📊 {stock_name} ({stock_id})籌碼中心", "weight": "bold", "size": "lg"},
-            {"type": "text", "text": "條件：持股大於 1000 張大股東變動趨勢", "size": "xs", "color": "#888888"},
+            {"type": "text", "text": f"📊 {stock_name} ({stock_id}) 籌碼中心", "weight": "bold", "size": "md"},
+            {"type": "text", "text": "條件：持股大於 1000 張大股東變動趨勢", "size": "xs", "color": "#888888", "margin": "none"},
             {"type": "separator", "margin": "md"},
-            # 表格標頭：加入 flex 比例確保對齊
+            
+            # 🌟 選項 B 升級點：高質感美化標頭（灰底包覆、精心彈性配重 1.5 : 2.5 : 2.5 : 2.5）
             {
-                "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "sm",
+                "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "margin": "md",
                 "contents": [
-                    {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center", "flex": 2},
-                    {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center", "flex": 2},
-                    {"type": "text", "text": "增減", "weight": "bold", "size": "xs", "align": "center", "flex": 2},
-                    {"type": "text", "text": "人數", "weight": "bold", "size": "xs", "align": "center", "flex": 2}
+                    {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center", "flex": 15, "wrap": False},
+                    {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center", "flex": 25, "wrap": False},
+                    {"type": "text", "text": "大股東變動", "weight": "bold", "size": "xs", "align": "center", "flex": 25, "wrap": False},
+                    {"type": "text", "text": "大股東人數", "weight": "bold", "size": "xs", "align": "center", "flex": 25, "wrap": False}
                 ]
             },
-            {"type": "separator"}
+            {"type": "separator", "color": "#dddddd"}
         ]
 
         has_data = False
@@ -258,24 +260,24 @@ def get_holders():
                         diff_str = f"+{diff_val:.2f}%" if diff_val >= 0 else f"{diff_val:.2f}%"
                         diff_color = "#ff0000" if diff_val >= 0 else "#008000"
                         
-                    count_str = f"{int(row.get('number_of_shareholders', 0)):,}人"
+                    count_str = f"{int(row.get('number_of_shareholders', 0))}人"
 
-                    # 資料列：同樣補上對應的 flex 比例
+                    # 🌟 選項 B 升級點：同步標頭配重比例，強制 wrap: False、去除內縮，加淡淡分隔線
                     body_contents.append({
-                        "type": "box", "layout": "horizontal", "padding": "sm",
+                        "type": "box", "layout": "horizontal", "margin": "md",
                         "contents": [
-                            {"type": "text", "text": date_str, "size": "xs", "align": "center", "flex": 2},
-                            {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold", "flex": 2},
-                            {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold", "flex": 2},
-                            {"type": "text", "text": count_str, "size": "xs", "align": "center", "flex": 2}
+                            {"type": "text", "text": date_str, "size": "xs", "align": "center", "flex": 15, "wrap": False},
+                            {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold", "flex": 25, "wrap": False},
+                            {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold", "flex": 25, "wrap": False},
+                            {"type": "text", "text": count_str, "size": "xs", "align": "center", "flex": 25, "wrap": False}
                         ]
                     })
-                    body_contents.append({"type": "separator", "color": "#eeeeee"})
+                    body_contents.append({"type": "separator", "color": "#eeeeee", "margin": "md"})
 
         if not has_data:
             body_contents.append({
-                "type": "box", "layout": "horizontal", "padding": "md",
-                "contents": [{"type": "text", "text": "⚠️ 暫無大股東歷史籌碼資料", "align": "center", "color": "#ff0000", "flex": 1}]
+                "type": "box", "layout": "horizontal", "margin": "md",
+                "contents": [{"type": "text", "text": "⚠️ 暫無大股東歷史籌碼資料", "align": "center", "color": "#ff0000", "flex": 1, "wrap": False}]
             })
 
         bubble_payload = {
