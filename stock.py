@@ -62,6 +62,9 @@ def serve_image(image_key):
         return send_file(filepath, mimetype='image/png')
     return "Image not found", 404
 
+# -------------------------------------------------------------------------
+# 🛠️ 路由 2：【K線圖主控中心】
+# -------------------------------------------------------------------------
 @app.route('/get_chart', methods=['POST'])
 def get_chart():
     try:
@@ -113,9 +116,7 @@ def get_chart():
         base_url = "https://meo-qput.onrender.com"
         final_image_url = f"{base_url}/images/{image_key}.png"
 
-        # -------------------------------------------------------------
-        # 📦 訊息 1：純圖卡泡泡 (messages[0]) -> 絕對安全的純淨結構
-        # -------------------------------------------------------------
+        # 📦 訊息 1：純圖卡泡泡
         chart_bubble = {
             "type": "flex",
             "altText": f"{stock_name} ({stock_id}) K線圖",
@@ -147,9 +148,7 @@ def get_chart():
             }
         }
 
-        # -------------------------------------------------------------
-        # 📦 訊息 2：純按鈕鍵盤泡泡 (messages[1]) -> 精準的四排按鈕佈局
-        # -------------------------------------------------------------
+        # 📦 訊息 2：純按鈕鍵盤泡泡
         buttons_bubble = {
             "type": "flex",
             "altText": f"{stock_name} 功能選單",
@@ -161,7 +160,6 @@ def get_chart():
                     "layout": "vertical",
                     "spacing": "xs",
                     "contents": [
-                        # 第一排：期貨大鈕
                         {
                             "type": "box", "layout": "horizontal",
                             "contents": [
@@ -169,7 +167,6 @@ def get_chart():
                             ]
                         },
                         {"type": "separator", "margin": "xs"},
-                        # 第二排：分時切換
                         {
                             "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                             "contents": [
@@ -179,7 +176,6 @@ def get_chart():
                                 {"type": "button", "height": "sm", "style": "link", "action": {"type": "message", "label": "30分", "text": f"K線 {stock_id} 30m"}}
                             ]
                         },
-                        # 第三排：日週月切換
                         {
                             "type": "box", "layout": "horizontal", "spacing": "xs",
                             "contents": [
@@ -189,7 +185,6 @@ def get_chart():
                             ]
                         },
                         {"type": "separator", "margin": "xs"},
-                        # 第四排 A段：核心功能
                         {
                             "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                             "contents": [
@@ -198,7 +193,6 @@ def get_chart():
                                 {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
                             ]
                         },
-                        # 第四排 B段：進階功能
                         {
                             "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
                             "contents": [
@@ -211,7 +205,6 @@ def get_chart():
             }
         }
 
-        # 🚀 同時發送圖卡與選單，完美通車！
         line_payload = {
             "replyToken": reply_token,
             "messages": [chart_bubble, buttons_bubble]
@@ -222,9 +215,131 @@ def get_chart():
         print(f"💥 K線圖生成失敗：{str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
+# -------------------------------------------------------------------------
+# 🛠️ 路由 3：【千張大股東籌碼中心】(修復 500 錯誤完整版)
+# -------------------------------------------------------------------------
 @app.route('/get_holders', methods=['POST'])
 def get_holders():
-    pass # 請保留你原有的 get_holders 完整語法
+    try:
+        req_data = request.get_json() or {}
+        raw_id = req_data.get('stock_id', '').strip()
+        reply_token = req_data.get('replyToken', '').strip()
+        
+        stock_id = re.sub(r'[^0-9]', '', raw_id.replace("持股", ""))[:10]
+        stock_name = STOCK_NAME_MAP.get(stock_id, f"個股 {stock_id}")
+
+        fm_token = os.environ.get("FINMIND_TOKEN", "")
+        url = "https://api.finmindtrade.com/api/v4/data"
+        params = {"dataset": "TaiwanStockShareholding", "data_id": stock_id, "token": fm_token}
+        resp = requests.get(url, params=params).json()
+        
+        has_data = False
+        table_rows = [
+            {
+                "type": "box", "layout": "horizontal", "backgroundColor": "#f2f2f2", "padding": "xs",
+                "contents": [
+                    {"type": "text", "text": "日期", "weight": "bold", "size": "xs", "align": "center"},
+                    {"type": "text", "text": "大股東比", "weight": "bold", "size": "xs", "align": "center"},
+                    {"type": "text", "text": "增減", "weight": "bold", "size": "xs", "align": "center"},
+                    {"type": "text", "text": "人數", "weight": "bold", "size": "xs", "align": "center"}
+                ]
+            },
+            {"type": "separator"}
+        ]
+
+        if resp.get("status") == 200 and resp.get("data"):
+            df = pd.DataFrame(resp["data"])
+            df_1000 = df[df["shareholding_class"].astype(str).str.contains("1000|1,000")].copy()
+            
+            if not df_1000.empty:
+                df_1000 = df_1000.sort_values("date", ascending=False)
+                if len(df_1000) > 1:
+                    df_1000['diff'] = df_1000['proportions'].diff(-1)
+                else:
+                    df_1000['diff'] = 0.0
+                    
+                df_4 = df_1000.head(4).copy()
+                has_data = True
+
+                for _, row in df_4.iterrows():
+                    raw_date = str(row.get("date", "----"))
+                    date_str = raw_date[5:].replace("-", "/") if len(raw_date) >= 10 else raw_date
+                    ratio_str = f"{row.get('proportions', 0.0):.2f}%"
+                    
+                    diff_val = row.get('diff', 0.0)
+                    if pd.isna(diff_val):
+                        diff_str, diff_color = "--", "#000000"
+                    else:
+                        diff_str = f"+{diff_val:.2f}%" if diff_val >= 0 else f"{diff_val:.2f}%"
+                        diff_color = "#ff0000" if diff_val >= 0 else "#008000"
+                        
+                    count_str = f"{int(row.get('number_of_shareholders', 0)):,}人"
+
+                    table_rows.append({
+                        "type": "box", "layout": "horizontal", "padding": "xs",
+                        "contents": [
+                            {"type": "text", "text": date_str, "size": "xs", "align": "center"},
+                            {"type": "text", "text": ratio_str, "size": "xs", "align": "center", "weight": "bold"},
+                            {"type": "text", "text": diff_str, "size": "xs", "align": "center", "color": diff_color, "weight": "bold"},
+                            {"type": "text", "text": count_str, "size": "xs", "align": "center"}
+                        ]
+                    })
+                    table_rows.append({"type": "separator", "color": "#eeeeee"})
+
+        if not has_data:
+            table_rows.append({
+                "type": "box", "layout": "horizontal", "padding": "md",
+                "contents": [{"type": "text", "text": "⚠️ 暫無大股東歷史籌碼資料", "align": "center", "color": "#ff0000"}]
+            })
+
+        body_contents = [
+            {"type": "text", "text": f"📊 {stock_name} ({stock_id})", "weight": "bold", "size": "lg"},
+            {"type": "text", "text": "條件：大股東張數大於1000張歷史變動", "size": "xs", "color": "#888888", "margin": "xs"},
+            {"type": "box", "layout": "vertical", "margin": "md", "spacing": "xs", "contents": table_rows},
+            {"type": "separator"},
+            {
+                "type": "box", "layout": "horizontal", "spacing": "xs",
+                "contents": [
+                    {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "即時", "text": f"即時 {stock_id}"}},
+                    {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "K線", "text": f"K線 {stock_id} daily"}},
+                    {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "法人", "text": f"法人 {stock_id}"}}
+                ]
+            },
+            {
+                "type": "box", "layout": "horizontal", "spacing": "xs", "margin": "xs",
+                "contents": [
+                    {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "融資券", "text": f"融資券 {stock_id}"}},
+                    {"type": "button", "height": "sm", "style": "primary", "action": {"type": "message", "label": "持股", "text": f"持股 {stock_id}"}}
+                ]
+            }
+        ]
+
+        # 🚀 籌碼中心也統一打包成標準規格回傳
+        line_payload = {
+            "replyToken": reply_token,
+            "messages": [
+                {
+                    "type": "flex",
+                    "altText": f"{stock_name} ({stock_id}) 大股東籌碼查詢結果",
+                    "contents": {
+                        "type": "bubble",
+                        "body": {
+                            "type": "box",
+                            "layout": "vertical",
+                            "spacing": "sm",
+                            "contents": body_contents
+                        }
+                    }
+                }
+            ]
+        }
+        return jsonify(line_payload), 200
+
+    except Exception as e:
+        print(f"💥 籌碼系統發生錯誤：{str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
