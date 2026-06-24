@@ -181,7 +181,7 @@ from flask import Flask, request, jsonify
 # 🔥 關鍵：宣告 app 變數，讓 Render 的 Gunicorn 能夠順利抓到它！
 app = Flask(__name__)
 
-@app.route('/webhook', methods=['POST'])
+@app.route('/get_chart', methods=['POST'])
 def webhook_entry():
     """
     接收來自 Make (Integromat) 的 HTTP POST 請求窗口
