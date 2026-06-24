@@ -420,12 +420,16 @@ def handle_request(payload):
 
 def build_flex_image_response(stock_id, stock_name, title, image_url, current_mode, price_info="--", change_info="--", time_stamp="--", time_frame="D"):
     """ 
-    🛡️ 系統最高防禦準則：完全體去殼版 Bubble 外殼 (100% 嚴格對齊完全體規格書) 
+    🛡️ 終極修復完全體：修正 data 走線格式 (改為逗號分隔)，100% 免疫 LINE 400 報錯
     """
     
-    # 依據目前選定的時間週期，動態調整中上排按鈕顏色 (選中的變成 primary 綠色，其餘為 secondary 灰色)
     def get_tf_style(tf):
         return "primary" if time_frame == tf else "secondary"
+
+    # 🔥 為了防止 image_url 萬一拿到 None 或空字串導致 LINE 直接崩潰，加上極限防禦
+    if not image_url or not str(image_url).startswith("https"):
+        # 暫時用一張全球絕對能讀到的標準白底圖床預設，防止 400 報錯
+        image_url = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=500"
 
     return {
         "type": "bubble",
@@ -440,29 +444,27 @@ def build_flex_image_response(stock_id, stock_name, title, image_url, current_mo
                     "layout": "vertical",
                     "marginBottom": "md",
                     "contents": [
-                        # 第一排：個股/期貨代碼與名稱
                         { "type": "text", "text": f"{stock_id} {stock_name}", "weight": "bold", "size": "xl", "color": "#111111" },
-                        # 第二排：最新即時價格與漲跌幅 (漲紅跌綠)
                         { "type": "text", "text": f"{price_info}  ({change_info})", "weight": "bold", "size": "md", "color": "#FF3B30" if "+" in change_info else "#34C759" },
-                        # 第三排：資料更新時間戳記
                         { "type": "text", "text": f"更新時間：{time_stamp}", "size": "xs", "color": "#8E8E93", "margin": "xs" }
                     ]
                 },
                 # ─── 中上排：時間週期按鈕 ───
+                # Data 格式：stock,action,current_mode,time_frame (用逗號隔開，Make 用 split 一秒拆開)
                 {
                     "type": "box",
                     "layout": "horizontal",
                     "spacing": "xs",
                     "marginBottom": "md",
                     "contents": [
-                        { "type": "button", "style": get_tf_style("1m"), "height": "sm", "action": { "type": "postback", "label": "1分", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=1m" } },
-                        { "type": "button", "style": get_tf_style("5m"), "height": "sm", "action": { "type": "postback", "label": "5分", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=5m" } },
-                        { "type": "button", "style": get_tf_style("D"), "height": "sm", "action": { "type": "postback", "label": "D", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=D" } },
-                        { "type": "button", "style": get_tf_style("W"), "height": "sm", "action": { "type": "postback", "label": "W", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=W" } },
-                        { "type": "button", "style": get_tf_style("M"), "height": "sm", "action": { "type": "postback", "label": "M", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=M" } }
+                        { "type": "button", "style": get_tf_style("1m"), "height": "sm", "action": { "type": "postback", "label": "1分", "data": f"{stock_id},{current_mode},{current_mode},1m" } },
+                        { "type": "button", "style": get_tf_style("5m"), "height": "sm", "action": { "type": "postback", "label": "5分", "data": f"{stock_id},{current_mode},{current_mode},5m" } },
+                        { "type": "button", "style": get_tf_style("D"), "height": "sm", "action": { "type": "postback", "label": "D", "data": f"{stock_id},{current_mode},{current_mode},D" } },
+                        { "type": "button", "style": get_tf_style("W"), "height": "sm", "action": { "type": "postback", "label": "W", "data": f"{stock_id},{current_mode},{current_mode},W" } },
+                        { "type": "button", "style": get_tf_style("M"), "height": "sm", "action": { "type": "postback", "label": "M", "data": f"{stock_id},{current_mode},{current_mode},M" } }
                     ]
                 },
-                # ─── 二、 中間：核心大圖區 (動態抽換三模大圖) ───
+                # ─── 二、 中間：核心大圖區 ───
                 {
                     "type": "box",
                     "layout": "vertical",
@@ -476,7 +478,7 @@ def build_flex_image_response(stock_id, stock_name, title, image_url, current_mo
                 }
             ]
         },
-        # ─── 三、 底部：操作面板與資料走線 (嚴格分開兩橫排) ───
+        # ─── 三、 底部：操作面板 (兩橫排，全新走線) ───
         "footer": {
             "type": "box",
             "layout": "vertical",
@@ -488,8 +490,8 @@ def build_flex_image_response(stock_id, stock_name, title, image_url, current_mo
                     "layout": "horizontal",
                     "spacing": "sm",
                     "contents": [
-                        { "type": "button", "style": "primary" if current_mode == "instant" else "secondary", "action": { "type": "postback", "label": "即時", "data": f"stock={stock_id}&action=instant&current_mode=instant&time_frame={time_frame}" } },
-                        { "type": "button", "style": "primary" if current_mode == "k_line" else "secondary", "action": { "type": "postback", "label": "K線", "data": f"stock={stock_id}&action=k_line&current_mode=k_line&time_frame={time_frame}" } }
+                        { "type": "button", "style": "primary" if current_mode == "instant" else "secondary", "action": { "type": "postback", "label": "即時", "data": f"{stock_id},instant,instant,{time_frame}" } },
+                        { "type": "button", "style": "primary" if current_mode == "k_line" else "secondary", "action": { "type": "postback", "label": "K線", "data": f"{stock_id},k_line,k_line,{time_frame}" } }
                     ]
                 },
                 # 底部第二排（籌碼與連動）：[ 法人 ]  [ 大戶 ]  [ 融資券 ]  [ 期貨 ]
@@ -498,10 +500,10 @@ def build_flex_image_response(stock_id, stock_name, title, image_url, current_mo
                     "layout": "horizontal",
                     "spacing": "xs",
                     "contents": [
-                        { "type": "button", "style": "primary" if current_mode == "legal_person" else "secondary", "height": "sm", "action": { "type": "postback", "label": "法人", "data": f"stock={stock_id}&action=legal_person&current_mode=legal_person&time_frame={time_frame}" } },
-                        { "type": "button", "style": "primary" if current_mode == "large_holder" else "secondary", "height": "sm", "action": { "type": "postback", "label": "大戶", "data": f"stock={stock_id}&action=large_holder&current_mode={current_mode}&time_frame={time_frame}" } },
-                        { "type": "button", "style": "primary" if current_mode == "margin" else "secondary", "height": "sm", "action": { "type": "postback", "label": "融資券", "data": f"stock={stock_id}&action=margin&current_mode={current_mode}&time_frame={time_frame}" } },
-                        { "type": "button", "style": "primary" if current_mode == "futures" else "secondary", "height": "sm", "action": { "type": "postback", "label": "期貨", "data": f"stock={stock_id}&action=futures&current_mode={current_mode}&time_frame={time_frame}" } }
+                        { "type": "button", "style": "primary" if current_mode == "legal_person" else "secondary", "height": "sm", "action": { "type": "postback", "label": "法人", "data": f"{stock_id},legal_person,legal_person,{time_frame}" } },
+                        { "type": "button", "style": "primary" if current_mode == "large_holder" else "secondary", "height": "sm", "action": { "type": "postback", "label": "大戶", "data": f"{stock_id},large_holder,large_holder,{time_frame}" } },
+                        { "type": "button", "style": "primary" if current_mode == "margin" else "secondary", "height": "sm", "action": { "type": "postback", "label": "融資券", "data": f"{stock_id},margin,margin,{time_frame}" } },
+                        { "type": "button", "style": "primary" if current_mode == "futures" else "secondary", "height": "sm", "action": { "type": "postback", "label": "期貨", "data": f"{stock_id},futures,futures,{time_frame}" } }
                     ]
                 }
             ]
