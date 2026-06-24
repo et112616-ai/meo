@@ -238,7 +238,13 @@ def handle_request(payload):
     else:
         return build_error_response("未知的操作指令")
 
-def build_flex_image_response(stock_id, stock_name, title, image_url, current_mode):
+def build_flex_image_response(stock_id, stock_name, title, image_url, current_mode, price_info="--", change_info="--", time_stamp="--", time_frame="D"):
+    """ 🛡️ 系統最高防禦準則：完全體圖片型 Flex Bubble 外殼 (100% 符合規格書) """
+    
+    # 依據目前選定的時間週期，動態調整按鈕顏色 (選中的變成 primary 綠色，其餘為 secondary 灰色)
+    def get_tf_style(tf):
+        return "primary" if time_frame == tf else "secondary"
+
     return {
         "type": "flex",
         "altText": f"{stock_id} {stock_name} {title} 觀測儀表板",
@@ -247,32 +253,73 @@ def build_flex_image_response(stock_id, stock_name, title, image_url, current_mo
             "body": {
                 "type": "box",
                 "layout": "vertical",
+                "paddingAll": "md",
                 "contents": [
-                    { "type": "text", "text": f"{stock_id} {stock_name} - {title}", "weight": "bold", "size": "xl" },
-                    { "type": "image", "url": image_url, "size": "full", "aspectMode": "cover" }
+                    # ─── 一、 頂部基本資訊區 ───
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "marginBottom": "md",
+                        "contents": [
+                            { "type": "text", "text": f"{stock_id} {stock_name}", "weight": "bold", "size": "xl", "color": "#111111" },
+                            { "type": "text", "text": f"{price_info}  ({change_info})", "weight": "bold", "size": "md", "color": "#FF3B30" if "+" in change_info else "#34C759" },
+                            { "type": "text", "text": f"更新時間：{time_stamp}", "size": "xs", "color": "#8E8E93", "margin": "xs" }
+                        ]
+                    },
+                    # ─── 中上排：時間週期橫排按鈕 ───
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "xs",
+                        "marginBottom": "md",
+                        "contents": [
+                            { "type": "button", "style": get_tf_style("1m"), "height": "sm", "action": { "type": "postback", "label": "1分", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=1m" } },
+                            { "type": "button", "style": get_tf_style("5m"), "height": "sm", "action": { "type": "postback", "label": "5分", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=5m" } },
+                            { "type": "button", "style": get_tf_style("D"), "height": "sm", "action": { "type": "postback", "label": "D", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=D" } },
+                            { "type": "button", "style": get_tf_style("W"), "height": "sm", "action": { "type": "postback", "label": "W", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=W" } },
+                            { "type": "button", "style": get_tf_style("M"), "height": "sm", "action": { "type": "postback", "label": "M", "data": f"stock={stock_id}&action={current_mode}&current_mode={current_mode}&time_frame=M" } }
+                        ]
+                    },
+                    # ─── 二、 中間：核心大圖區 (白底高解析度) ───
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#FFFFFF",
+                        "cornerRadius": "md",
+                        "borderWidth": "1px",
+                        "borderColor": "#E5E5EA",
+                        "contents": [
+                            { "type": "image", "url": image_url, "size": "full", "aspectMode": "fit", "aspectRatio": "4:3" }
+                        ]
+                    }
                 ]
             },
-            "footer": {  # 👈 真正把按鈕補在這裡！
+            # ─── 三、 底部：操作面板與資料走線 ───
+            "footer": {
                 "type": "box",
                 "layout": "vertical",
                 "spacing": "sm",
                 "contents": [
+                    # 底部第一排（模式切換）
                     {
                         "type": "box",
                         "layout": "horizontal",
                         "spacing": "sm",
                         "contents": [
-                            { "type": "button", "style": "primary", "height": "sm", "action": { "type": "postback", "label": "即時走勢", "data": f"stock={stock_id}&action=instant&current_mode={current_mode}" } },
-                            { "type": "button", "style": "primary", "height": "sm", "action": { "type": "postback", "label": "技術K線", "data": f"stock={stock_id}&action=k_line&current_mode={current_mode}&time_frame=D" } }
+                            { "type": "button", "style": "primary" if current_mode == "instant" else "secondary", "action": { "type": "postback", "label": "即時", "data": f"stock={stock_id}&action=instant&current_mode=instant&time_frame={time_frame}" } },
+                            { "type": "button", "style": "primary" if current_mode == "k_line" else "secondary", "action": { "type": "postback", "label": "K線", "data": f"stock={stock_id}&action=k_line&current_mode=k_line&time_frame={time_frame}" } }
                         ]
                     },
+                    # 底部第二排（籌碼與連動）
                     {
                         "type": "box",
                         "layout": "horizontal",
-                        "spacing": "sm",
+                        "spacing": "xs",
                         "contents": [
-                            { "type": "button", "style": "secondary", "height": "sm", "action": { "type": "postback", "label": "三大法人", "data": f"stock={stock_id}&action=legal_person&current_mode={current_mode}" } },
-                            { "type": "button", "style": "secondary", "height": "sm", "action": { "type": "postback", "label": "大戶籌碼", "data": f"stock={stock_id}&action=large_holder&current_mode={current_mode}" } }
+                            { "type": "button", "style": "primary" if current_mode == "legal_person" else "secondary", "height": "sm", "action": { "type": "postback", "label": "法人", "data": f"stock={stock_id}&action=legal_person&current_mode=legal_person" } },
+                            { "type": "button", "style": "secondary", "height": "sm", "action": { "type": "postback", "label": "大戶", "data": f"stock={stock_id}&action=large_holder&current_mode={current_mode}" } },
+                            { "type": "button", "style": "secondary", "height": "sm", "action": { "type": "postback", "label": "融資券", "data": f"stock={stock_id}&action=margin&current_mode={current_mode}" } },
+                            { "type": "button", "style": "secondary", "height": "sm", "action": { "type": "postback", "label": "期貨", "data": f"stock={stock_id}&action=futures&current_mode={current_mode}&time_frame={time_frame}" } }
                         ]
                     }
                 ]
