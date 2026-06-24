@@ -239,7 +239,6 @@ def handle_request(payload):
         return build_error_response("未知的操作指令")
 
 def build_flex_image_response(stock_id, stock_name, title, image_url, current_mode):
-    """ 🛡️ 統一外殼防爆器：輸出圖片型 Bubble JSON 結構 """
     return {
         "type": "flex",
         "altText": f"{stock_id} {stock_name} {title} 觀測儀表板",
@@ -249,13 +248,37 @@ def build_flex_image_response(stock_id, stock_name, title, image_url, current_mo
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
-                    { "type": "text", "text": f"{stock_id} {stock_name}", "weight": "bold", "size": "xl" },
+                    { "type": "text", "text": f"{stock_id} {stock_name} - {title}", "weight": "bold", "size": "xl" },
                     { "type": "image", "url": image_url, "size": "full", "aspectMode": "cover" }
+                ]
+            },
+            "footer": {  # 👈 真正把按鈕補在這裡！
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "sm",
+                        "contents": [
+                            { "type": "button", "style": "primary", "height": "sm", "action": { "type": "postback", "label": "即時走勢", "data": f"stock={stock_id}&action=instant&current_mode={current_mode}" } },
+                            { "type": "button", "style": "primary", "height": "sm", "action": { "type": "postback", "label": "技術K線", "data": f"stock={stock_id}&action=k_line&current_mode={current_mode}&time_frame=D" } }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "sm",
+                        "contents": [
+                            { "type": "button", "style": "secondary", "height": "sm", "action": { "type": "postback", "label": "三大法人", "data": f"stock={stock_id}&action=legal_person&current_mode={current_mode}" } },
+                            { "type": "button", "style": "secondary", "height": "sm", "action": { "type": "postback", "label": "大戶籌碼", "data": f"stock={stock_id}&action=large_holder&current_mode={current_mode}" } }
+                        ]
+                    }
                 ]
             }
         }
     }
-
 def build_flex_text_table_response(stock_id, stock_name, title, data_list, table_type):
     """ 🛡️ 統一外殼防爆器：輸出純文字小表格型 Bubble JSON 結構 """
     return {
