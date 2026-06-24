@@ -5,10 +5,13 @@
 最高架構：5 大模組清晰分區，嚴格對齊 LINE Flex Message 100% 防爆規範
 """
 
-import os
-import datetime
+import matplotlib
+matplotlib.use('Agg')  # 🔥 關鍵：防爆！確保在 Linux/Render 伺服器後台運行時不會噴 GUI 錯誤
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+import yfinance as yf
+import pandas as pd
+from datetime import datetime
+import os
 
 # ==============================================================================
 # 【區域一】 環境配置與全域宣告 (Environment & Fonts Config)
@@ -57,8 +60,6 @@ def normalize_stock_input(stock_input):
     STOCK_DICTIONARY = {
         "2330": "台積電",
         "2313": "華通",
-        "1101": "台泥",
-        "2022": "聚亨",
         "2301": "光寶科",
         "2303": "聯電",
         "2634": "漢翔",
@@ -116,46 +117,170 @@ def upload_to_cloud(fig):
     plt.close(fig) # 釋放記憶體以免後台爆掉
     return "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=500"
 
-
 # ==============================================================================
 # 【區域三】 Matplotlib 數據繪圖引擎 (Graphic Rendering Engine)
 # ==============================================================================
+import matplotlib
+matplotlib.use('Agg')  # 🛡️ 伺服器後台防爆開關：避免 Linux 環境噴出 GUI 錯誤
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.dates as mdates
+import yfinance as yf
+import pandas as pd
+from datetime import datetime
+
+def _helper_get_stock_data_and_meta(stock_id, period="1d", interval="1m"):
+    """ 內部輔助工具：統一處理 yfinance 台灣市場後綴與頂部即時數據計算 """
+    yf_id = f"{stock_id}.TW" if not stock_id.endswith(".TW") and len(stock_id) <= 4 else stock_id
+    ticker = yf.Ticker(yf_id)
+    df = ticker.history(period=period, interval=interval)
+    
+    # 盤後或假日防爆：若無當日資料，放寬撈取 5 天內的最新數據
+    if df.empty and period == "1d":
+        df = ticker.history(period="5d", interval=interval)
+        if not df.empty:
+            # 依最後一筆交易日切片 (台股一天 390 分鐘)
+            last_date = df.index[-1].date()
+            df = df[df.index.date == last_date]
+
+    price_info, change_info, time_stamp = "--", "--", "--"
+    open_price = None
+
+    if not df.empty:
+        latest_price = round(df['Close'].iloc[-1], 2)
+        try:
+            open_price = ticker.info.get('regularMarketOpen', df['Open'].iloc[0])
+        except:
+            open_price = df['Open'].iloc[0]
+            
+        price_change = latest_price - open_price
+        change_pct = (price_change / open_price) * 100
+        sign = "+" if price_change > 0 else ""
+        
+        price_info = f"{latest_price}"
+        change_info = f"{sign}{round(price_change, 2)} ({sign}{round(change_pct, 2)}%)"
+        time_stamp = df.index[-1].strftime('%Y-%m-%d %H:%M')
+        
+    return df, price_info, change_info, time_stamp, open_price
+
+# ------------------------------------------------------------------------------
+# 📈 模式 A：即時走勢圖 (江波圖)
+# ------------------------------------------------------------------------------
 def generate_instant_plot(stock_id, stock_name, is_futures=False):
     """ 模式 A：即時走勢圖 (江波圖) """
-    fig, ax = plt.subplots(figsize=(6, 4), dpi=100)
-    # [繪圖邏輯] 繪製盤中價格連續折線圖...
-    ax.plot([1, 2, 3, 4], [5, 7, 6, 8], color='#1e88e5', lw=2)
-    ax.set_title(f"{stock_name}({stock_id}) {'期貨' if is_futures else ''} 即時走勢")
+    # 1. 撈取數據與頂部資訊
+    df, price_info, change_info, time_stamp, open_price = _helper_get_stock_data_and_meta(stock_id, period="1d", interval="1m")
     
-    image_url = upload_to_cloud(fig)
-    return build_flex_image_response(stock_id, stock_name, "即時走勢", image_url, current_mode="instant")
+    # 2. 開始繪製清爽白底大圖
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=120, facecolor='#FFFFFF')
+    ax.set_facecolor('#F8F9FA')  # 清爽淺灰色盤面
+    
+    if not df.empty:
+        # 繪製盤中價格連續折線圖
+        ax.plot(df.index, df['Close'], color='#007AFF', lw=2.5, label="即時價格走勢")
+        if open_price:
+            ax.axhline(y=open_price, color='#FF9500', linestyle='--', lw=1.2, label=f"今日開盤 ({open_price})")
+        
+        # 依規格書：分K時 X 軸自動變形為 %H:%M
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    else:
+        ax.text(0.5, 0.5, "暫無盤中即時走勢數據", ha='center', va='center', fontsize=12, color='#8E8E93')
 
+    ax.set_title(f"{stock_name}({stock_id}) {'期貨' if is_futures else ''} 即時走勢", fontsize=13, fontweight='bold', pad=10)
+    ax.grid(True, linestyle=':', alpha=0.6, color='#CCCCCC')
+    ax.legend(loc='upper left', fontsize=9)
+    plt.tight_layout()
+    
+    # 3. 上傳雲端並包裹完全體外殼回傳
+    image_url = upload_to_cloud(fig)
+    plt.close(fig)
+    
+    return build_flex_image_response(
+        stock_id=stock_id, stock_name=stock_name, title="即時走勢", image_url=image_url, 
+        current_mode="instant", price_info=price_info, change_info=change_info, time_stamp=time_stamp, time_frame="D"
+    )
+
+# ------------------------------------------------------------------------------
+# 📊 模式 B：專業技術 K 線圖
+# ------------------------------------------------------------------------------
 def generate_k_line_plot(stock_id, stock_name, time_frame="D", is_futures=False):
     """ 模式 B：專業技術 K 線圖 (帶均線、成交量雙子圖) """
-    fig = plt.figure(figsize=(6, 4), dpi=100)
-    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
+    # 根據選定的時間週期對應 yfinance 的參數
+    tf_mapping = {"1m": ("1d", "1m"), "5m": ("5d", "5m"), "D": ("3mo", "1d"), "W": ("1y", "1wk"), "M": ("2y", "1mo")}
+    period, interval = tf_mapping.get(time_frame, ("3mo", "1d"))
     
-    # 子圖 1：K線與均線
+    df, price_info, change_info, time_stamp, _ = _helper_get_stock_data_and_meta(stock_id, period=period, interval=interval)
+    
+    # 創建雙子圖架構 (plt.GridSpec)
+    fig = plt.figure(figsize=(7, 5.5), dpi=120, facecolor='#FFFFFF')
+    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.15)
+    
     ax_k = fig.add_subplot(gs[0])
-    ax_k.set_title(f"{stock_name}({stock_id}) {time_frame}K線圖")
-    # 子圖 2：紅綠成交量柱狀圖
-    ax_vol = fig.add_subplot(gs[1])
+    ax_k.set_facecolor('#F8F9FA')
+    ax_vol = fig.add_subplot(gs[1], sharex=ax_k)
+    ax_vol.set_facecolor('#F8F9FA')
+    
+    if not df.empty:
+        # 計算 5日 / 20日 均線
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        
+        # 繪製 K 線 (簡化專業紅綠蠟燭)
+        for idx, row in df.iterrows():
+            color = '#FF3B30' if row['Close'] >= row['Open'] else '#34C759'  # 漲紅跌綠
+            # 畫影線
+            ax_k.plot([idx, idx], [row['Low'], row['High']], color=color, lw=1)
+            # 畫實體
+            ax_k.plot([idx, idx], [row['Open'], row['Close']], color=color, lw=4, solid_capstyle='butt')
+            
+            # 下半部：紅綠成交量柱狀圖
+            ax_vol.bar(idx, row['Volume'], color=color, width=0.6 if interval=="1d" else 0.002)
+            
+        # 繪製均線
+        ax_k.plot(df.index, df['MA5'], color='#FF9500', lw=1, label='MA5')
+        ax_k.plot(df.index, df['MA20'], color='#5856D6', lw=1, label='MA20')
+        ax_k.legend(loc='upper left', fontsize=8)
+        
+        # X 軸格式化對齊規格書
+        if "m" in interval:
+            ax_k.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        else:
+            ax_k.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+    else:
+        ax_k.text(0.5, 0.5, "暫無 K 線歷史數據", ha='center', va='center', fontsize=12, color='#8E8E93')
+        
+    ax_k.set_title(f"{stock_name}({stock_id}) {time_frame}K線圖", fontsize=13, fontweight='bold', pad=10)
+    ax_k.grid(True, linestyle=':', alpha=0.5)
+    ax_vol.grid(True, linestyle=':', alpha=0.5)
+    ax_vol.set_ylabel("成交量", fontsize=9)
+    plt.setp(ax_k.get_xticklabels(), visible=False)  # 隱藏上半部的 X 軸標籤避免重疊
     
     image_url = upload_to_cloud(fig)
-    return build_flex_image_response(stock_id, stock_name, f"{time_frame}K線圖", image_url, current_mode="k_line")
+    plt.close(fig)
+    
+    return build_flex_image_response(
+        stock_id=stock_id, stock_name=stock_name, title=f"{time_frame}K線圖", image_url=image_url, 
+        current_mode="k_line", price_info=price_info, change_info=change_info, time_stamp=time_stamp, time_frame=time_frame
+    )
 
+# ------------------------------------------------------------------------------
+# 🎨 模式 C：法人籌碼大圖
+# ------------------------------------------------------------------------------
 def generate_legal_person_chart(stock_id, stock_name):
     """ 
     模式 C：三大法人籌碼觀測大圖 
     ★ 嚴格執行秉璋指令：垂直獨立三大區域、最新數據頂部內嵌、X軸日期隱藏壓縮
     """
-    # 創建 3 列 1 行的畫布
-    fig, axes = plt.subplots(3, 1, figsize=(7, 9), dpi=120)
-    fig.suptitle(f"【{stock_name} {stock_id}】10日三大法人籌碼分布", fontsize=14, fontweight='bold')
+    # 獲取頂部元數據資訊
+    _, price_info, change_info, time_stamp, _ = _helper_get_stock_data_and_meta(stock_id, period="1d", interval="1m")
     
-    # 模擬 10 天的買賣超數據 (正數為買超、負數為賣超)
+    # 創建 3 列 1 行的白底高解析畫布
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), dpi=120, facecolor='#FFFFFF')
+    fig.suptitle(f"【{stock_name} {stock_id}】10日三大法人籌碼分布", fontsize=14, fontweight='bold', y=0.96)
+    
+    # 模擬 10 天的買賣超數據
     mock_10d_data = [1200, -850, 430, 2100, -1500, 600, -300, 900, -450, 2300]
-    colors = ['#e63946' if x > 0 else '#2a9d8f' for x in mock_10d_data] # 買超紅、賣超綠
+    colors = ['#FF3B30' if x > 0 else '#34C759' for x in mock_10d_data]  # 買超紅、賣超綠
     
     investor_types = [
         {"title": "▋ 第一區域：外資 (Foreign Investment)", "ratio": "45.23%", "today": "+2,300"},
@@ -165,30 +290,35 @@ def generate_legal_person_chart(stock_id, stock_name):
     
     for i, ax in enumerate(axes):
         info = investor_types[i]
+        ax.set_facecolor('#F8F9FA')
         
-        # 1. 頂部內嵌第一排文字核心資訊 (日期、持股比、當日買賣超張數)
-        text_str = f"最新日期: 06/23  │  持股比: {info['ratio']}  │  當日買賣超: {info['today']} 張"
-        ax.text(0.02, 1.15, text_str, transform=ax.transAxes, fontsize=10, fontweight='bold', color='#1d3557')
+        # 1. 頂部內嵌第一排文字核心資訊
+        text_str = f"最新日期: {time_stamp.split()[0]}  │  持股比: {info['ratio']}  │  當日買賣超: {info['today']} 張"
+        ax.text(0.02, 1.15, text_str, transform=ax.transAxes, fontsize=10, fontweight='bold', color='#1D3557')
         
-        # 2. 第二排繪製 10 日橫式柱狀圖趨勢 (以長條圖呈現 10 日起伏)
-        ax.bar(range(10), mock_10d_data, color=colors, edgecolor='none', width=0.6)
-        ax.axhline(0, color='#6c757d', linewidth=0.8) # 繪製 Y=0 基準線
+        # 2. 第二排繪製 10 日橫式柱狀圖趨勢
+        ax.bar(range(10), mock_10d_data, color=colors, edgecolor='none', width=0.5)
+        ax.axhline(0, color='#6C757D', linewidth=1.0)
         
         # 3. 欄位極致縮小防爆：徹底隱藏 X 軸日期序列字樣
         ax.set_xticklabels([])
         ax.set_xticks([])
         
-        # 裝飾調整
+        # 區域美化調整
         ax.set_ylabel("張數", fontsize=9)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.set_title(info['title'], loc='left', fontsize=11, fontweight='bold', pad=25, color='#e63946' if i==0 else '#2a9d8f')
+        ax.set_title(info['title'], loc='left', fontsize=11, fontweight='bold', pad=22, color='#FF3B30' if i==0 else '#34C759')
 
     plt.tight_layout()
+    
     image_url = upload_to_cloud(fig)
-    return build_flex_image_response(stock_id, stock_name, "三大法人籌碼", image_url, current_mode="legal_person")
-
-
+    plt.close(fig)
+    
+    return build_flex_image_response(
+        stock_id=stock_id, stock_name=stock_name, title="三大法人籌碼", image_url=image_url, 
+        current_mode="legal_person", price_info=price_info, change_info=change_info, time_stamp=time_stamp, time_frame="D"
+    )
 # ==============================================================================
 # 【區域四】 籌碼純文字表格生成器 (Text Table Generator)
 # ==============================================================================
