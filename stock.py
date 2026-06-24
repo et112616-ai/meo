@@ -174,8 +174,34 @@ def generate_margin_table(stock_id, stock_name):
 
 
 # ==============================================================================
-# 【區域五】 核心進入點與標準 LINE Flex 封裝外殼 (Controller & Standard Flex Wrapper)
+# 【區域五】 核心進入點與標準 LINE Flex 封裝外殼 (Controller & Flask API Wrapper)
 # ==============================================================================
+from flask import Flask, request, jsonify
+
+# 🔥 關鍵：宣告 app 變數，讓 Render 的 Gunicorn 能夠順利抓到它！
+app = Flask(__name__)
+
+@app.route('/webhook', methods=['POST'])
+def webhook_entry():
+    """
+    接收來自 Make (Integromat) 的 HTTP POST 請求窗口
+    """
+    try:
+        # 1. 抓取 Make 傳過來的 JSON 資料
+        payload = request.get_json()
+        if not payload:
+            return jsonify(build_error_response("未接收到 JSON Payload")), 400
+            
+        # 2. 丟進主控制器處理雙向轉換與按鈕分流
+        response_data = handle_request(payload)
+        
+        # 3. 將算好的完美 LINE Flex JSON 原封不動回傳給 Make
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        return jsonify(build_error_response(f"後台大腦發生非預期錯誤: {str(e)}")), 500
+
+
 def handle_request(payload):
     """ 主入口：接收來自 Make 的參數，自動雙向轉換，並依狀態記憶繼承分流 """
     stock_input = payload.get("stock")
@@ -214,7 +240,6 @@ def handle_request(payload):
 
 def build_flex_image_response(stock_id, stock_name, title, image_url, current_mode):
     """ 🛡️ 統一外殼防爆器：輸出圖片型 Bubble JSON 結構 """
-    # 這裡未來會填入完整的 LINE Flex Message 階層結構，包含頂部3排、中上週期、中間大圖、下排按鈕
     return {
         "type": "flex",
         "altText": f"{stock_id} {stock_name} {title} 觀測儀表板",
@@ -226,15 +251,13 @@ def build_flex_image_response(stock_id, stock_name, title, image_url, current_mo
                 "contents": [
                     { "type": "text", "text": f"{stock_id} {stock_name}", "weight": "bold", "size": "xl" },
                     { "type": "image", "url": image_url, "size": "full", "aspectMode": "cover" }
-                    # 下方保留傳遞參數按鈕，並打包 current_mode 回傳給 Make
                 ]
             }
         }
     }
 
 def build_flex_text_table_response(stock_id, stock_name, title, data_list, table_type):
-    """ 🛡️ 統一外殼防爆器：輸出純文字小表格型 Bubble JSON 結構 (骨架與上方圖片型完全一致) """
-    # 這裡最外層結構維持不變，僅中間肚子抽換成文字 Box 積木排版
+    """ 🛡️ 統一外殼防爆器：輸出純文字小表格型 Bubble JSON 結構 """
     return {
         "type": "flex",
         "altText": f"{stock_id} {stock_name} {title} 觀測數據",
@@ -245,7 +268,6 @@ def build_flex_text_table_response(stock_id, stock_name, title, data_list, table
                 "layout": "vertical",
                 "contents": [
                     { "type": "text", "text": f"{stock_id} {stock_name} - {title}", "weight": "bold" }
-                    # 依據 table_type 在此迴圈渲染直列三排(大戶)或橫排對齊(融資券)的 Text 元件
                 ]
             }
         }
@@ -253,3 +275,7 @@ def build_flex_text_table_response(stock_id, stock_name, title, data_list, table
 
 def build_error_response(error_msg):
     return {"status": "error", "message": error_msg}
+
+# 確保本地測試時也可以跑
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
