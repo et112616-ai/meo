@@ -36,23 +36,73 @@ def get_stock_id_by_name(stock_name):
             return k
     return None
 
+import re
+
 def normalize_stock_input(stock_input):
     """
-    實作秉璋指定的『雙向模糊比對』：
-    - 輸入 "2330"   -> 查出 "台積電"，回傳 ("2330", "台積電")
-    - 輸入 "台積電" -> 查出 "2330"，回傳 ("2330", "台積電")
+    【區域三】智能校正核心：將用戶輸入的 2330 / 台積電 / 2313 / 華通 
+    統一轉換為 yfinance 專用的 (stock_id, stock_name)
     """
-    stock_input_clean = str(stock_input).strip()
-    
-    if stock_input_clean.isdigit():
-        stock_id = stock_input_clean
-        stock_name = get_stock_name_by_id(stock_id)
-    else:
-        stock_name = stock_input_clean
-        stock_id = get_stock_id_by_name(stock_name)
-        
-    return stock_id, stock_name
+    if not stock_input:
+        return None, None
 
+    # 強制轉字串並去空格、轉大寫
+    stock_input = str(stock_input).strip().upper()
+    
+    # 移除可能不小心帶入的 .TW 後綴，以便進行內部核心庫對照
+    stock_input = stock_input.replace(".TW", "")
+
+    # ─── 1. 建立常用核心股票權重對照表 (確保極速精準回應) ───
+    # 這裡可以直接加入你最常觀測的口袋名單
+    STOCK_DICTIONARY = {
+        "2330": "台積電",
+        "2313": "華通",
+        "1101": "台泥",
+        "2022": "聚亨",
+        "2301": "光寶科",
+        "2303": "聯電",
+        "2634": "漢翔",
+        "0052": "富邦科技",
+        "009816": "凱基台灣TOP50"
+    }
+
+    # 反向字典：建立「名稱 ➔ 代碼」的對照 (如 "華通": "2313")
+    REVERSE_DICTIONARY = {v: k for k, v in STOCK_DICTIONARY.items()}
+
+    # ─── 2. 判斷輸入型態並進行對齊 ───
+    
+    # 情況 A：用戶輸入純數字代碼 (例如 "2313" 或 "2330")
+    if stock_input.isdigit():
+        stock_id = stock_input
+        # 從對照表抓名稱，抓不到就給預設的 "個股"
+        stock_name = STOCK_DICTIONARY.get(stock_id, "個股")
+        
+    # 情況 B：用戶輸入中文字名稱 (例如 "華通" 或 "台積電")
+    elif stock_input in REVERSE_DICTIONARY:
+        stock_name = stock_input
+        stock_id = REVERSE_DICTIONARY[stock_name]
+        
+    # 情況 C：用戶輸入了不在常用表內的非數字 (嘗試用模糊比對)
+    else:
+        # 如果有查到包含該關鍵字的常用股票
+        matched_name = next((name for name in REVERSE_DICTIONARY if stock_input in name), None)
+        if matched_name:
+            stock_name = matched_name
+            stock_id = REVERSE_DICTIONARY[matched_name]
+        else:
+            # 萬一真的完全找不到，就把用戶輸入當成代碼，名稱給預設
+            stock_id = stock_input
+            stock_name = "個股"
+
+    # ─── 3. 格式化輸出 ───
+    # yfinance 台灣市場必須加上 .TW (例如 2313.TW)，但 ETF 009816 如果格式特殊可另外判斷
+    if not stock_id.endswith(".TW") and len(stock_id) <= 4:
+        yfinance_id = f"{stock_id}.TW"
+    else:
+        yfinance_id = stock_id
+
+    return yfinance_id, stock_name
+    
 def convert_to_futures_id(stock_id):
     """將個股代碼轉換為對應的個股期貨代碼"""
     return f"F_{stock_id}"
